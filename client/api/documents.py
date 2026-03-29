@@ -21,6 +21,7 @@ class DocumentsAPI(APIBase):
         folder_id: Optional[int] = None,
         notes: str = "",
         tags: Optional[str] = None,
+        override_filename: Optional[str] = None,
     ) -> APIDocument:
         if not self._token:
             raise RuntimeError("JWT token is not set")
@@ -47,7 +48,7 @@ class DocumentsAPI(APIBase):
             data["encryption_key"] = encryption_key
 
         with open(file_path, "rb") as f:
-            filename = Path(file_path).name
+            filename = override_filename or Path(file_path).name
             resp = self._session.post(
                 url,
                 headers=self._headers(),

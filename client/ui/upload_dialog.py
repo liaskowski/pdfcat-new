@@ -282,6 +282,9 @@ class UploadDialog(QDialog):
                     upload_path = self._file_path
 
                 try:
+                    # Use the display title as the filename for the upload
+                    remote_filename = f"{data['title']}.pdf"
+                    
                     self.resulting_document = self._api.upload_file(
                         file_path=upload_path,
                         title=data["title"],
@@ -295,6 +298,7 @@ class UploadDialog(QDialog):
                         notes=data["notes"],
                         tags=data["tags"],
                         folder_id=data["folder_id"],
+                        override_filename=remote_filename # Pass custom filename
                     )
                 finally:
                     if temp_encrypted_path and os.path.exists(temp_encrypted_path):

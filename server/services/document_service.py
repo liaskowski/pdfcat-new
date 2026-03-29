@@ -111,7 +111,8 @@ class DocumentService:
         use_ocr: bool = False,
         notes: str = "",
         tags: Optional[str] = None,
-        encryption_key: Optional[str] = None
+        encryption_key: Optional[str] = None,
+        filename: Optional[str] = None
     ) -> Document:
 
         if folder_id:
@@ -130,7 +131,7 @@ class DocumentService:
 
         db_doc = Document(
             title=title,
-            filename=file.filename,
+            filename=filename or file.filename,
             file_path=stored_path,
             owner_id=user.id,
             folder_id=folder_id,
@@ -187,6 +188,10 @@ class DocumentService:
             if old_val != value:
                  self.save_history(doc, user.id, "update", str(value), str(old_val), key)
             setattr(doc, key, value)
+            
+            # If title is updated, also update filename to keep it pretty
+            if key == "title" and value:
+                 doc.filename = f"{value}.pdf" if not value.lower().endswith('.pdf') else value
         
         self.db.commit()
         self.db.refresh(doc)

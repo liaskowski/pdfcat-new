@@ -284,15 +284,28 @@ class FileOperations:
             )
             return
 
-        default_name = doc.filename or f"document_{doc.id}.pdf"
+        # Use title as the default filename for saving
+        # Remove any invalid characters for safety
+        safe_title = "".join([c for c in doc.title if (c.isalnum() and c.isascii()) or c in (" ", "-", "_")]).strip()
+        default_name = f"{safe_title}.pdf"
+
+        # Get last used directory from settings
+        from PyQt6.QtCore import QSettings
+        settings = QSettings("pdflib", "client")
+        last_dir = settings.value("last_download_dir", os.path.expanduser("~"))
+        initial_path = os.path.join(last_dir, default_name)
+
         save_path, _ = QFileDialog.getSaveFileName(
             self.view, 
             self.controller.translator.tr("context_menu.download"), 
-            default_name, 
+            initial_path, 
             "PDF Files (*.pdf *.PDF)"
         )
         if not save_path:
             return
+
+        # Save the directory for next time
+        settings.setValue("last_download_dir", os.path.dirname(save_path))
 
         self.controller.update_status(self.controller.translator.tr("common.loading"), 0)
         from ...utils.workers import DownloadWorker

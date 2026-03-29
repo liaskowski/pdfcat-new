@@ -64,6 +64,9 @@ async def upload_document(
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
         
+    # Ensure filename in DB is pretty (based on title)
+    db_filename = f"{title}.pdf" if not title.lower().endswith('.pdf') else title
+
     service = DocumentService(db)
     return service.upload_document(
         user=current_user,
@@ -80,7 +83,8 @@ async def upload_document(
         use_ocr=use_ocr,
         notes=notes or "",
         tags=tags,
-        encryption_key=encryption_key
+        encryption_key=encryption_key,
+        filename=db_filename
     )
 
 @router.get("/documents/", response_model=List[DocumentResponse])
@@ -172,6 +176,11 @@ async def download_document(
     doc = service.get_document(document_id, current_user)
     
     # URL Encode filename for header
+    # Use only ASCII characters for standard 'filename' to avoid encoding errors
+    safe_title = "".join([c for c in doc.title if (c.isalnum() and c.isascii()) or c in (" ", "-", "_")]).strip()
+    if not safe_title:
+         safe_title = f"document_{doc.id}"
+         
     encoded_filename = quote(f"{doc.title}.pdf")
     
     # Open and decrypt PDF
@@ -208,7 +217,7 @@ async def download_document(
                     content=original_content,
                     media_type="application/pdf",
                     headers={
-                        "Content-Disposition": f"inline; filename*=UTF-8''{encoded_filename}",
+                        "Content-Disposition": f"inline; filename=\"{safe_title}.pdf\"; filename*=UTF-8''{encoded_filename}",
                         "X-PDF-Status": "encrypted-raw"
                     }
                 )
@@ -223,7 +232,7 @@ async def download_document(
             content=buffer.read(),
             media_type="application/pdf",
             headers={
-                "Content-Disposition": f"inline; filename*=UTF-8''{encoded_filename}"
+                "Content-Disposition": f"inline; filename=\"{safe_title}.pdf\"; filename*=UTF-8''{encoded_filename}"
             }
         )
     except Exception as e:
