@@ -1,0 +1,87 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+.venv_new/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Database (protect local database files)
+*.db
+*.sqlite
+*.sqlite3
+app.db
+app.db-shm
+app.db-wal
+
+# Large binaries and portable environments
+vendor/
+vendor_old/
+
+# Logs and debug info
+logs/
+*.log
+$null
+
+# Backups and temporary files
+backups/
+temp/
+tmp/
+
+# Uploads and personal documents
+uploads/
+pdf/
+*.pdf
+downloaded_*.pdf
+test_download.pdf
+raw_download.pdf
+
+# Testing assets and output
+test_*.png
+test_*.ico
+
+# IDE and system files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Environment and secrets (CRITICAL)
+.env
+.env.local
+.env.*
+client_config.json
+profiles.json
+
+# Node modules (for frontend or general)
+node_modules/
+
+# Assets management
+# Allow only small assets, ignore everything else in images/icons
+assets/images/*
+assets/icons/*
+!assets/images/pdfCat.jpg
+!assets/icons/pdfCat.ico
+!assets/index.html

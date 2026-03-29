@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker-compose *)",
+      "Bash(select-string *)",
+      "Bash(python *)",
+      "Bash(test-path *)",
+      "Bash(uv *)",
+      "Bash(timeout *)",
+      "Bash(netstat *)",
+      "Bash(findstr *)",
+      "Bash(taskkill *)",
+      "Bash(true)",
+      "WebFetch(pdfjs.express)",
+      "Bash(npm install *)",
+      "Bash(dir *)",
+      "Bash(xcopy *)",
+      "Bash(npm uninstall *)",
+      "Bash(npm run *)",
+      "Bash(del *)",
+      "Bash(copy *)",
+      "Bash(git diff *)"
+    ]
+  },
+  "$version": 3
+}

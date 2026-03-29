@@ -1,0 +1,19 @@
+# Pre-commit hooks to prevent authentication issues
+repos:
+  - repo: local
+    hooks:
+      - id: auth-consistency-check
+        name: Authentication Consistency Check
+        entry: python server/test_auth_consistency.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        description: "Check for authentication inconsistencies between server endpoints and client API"
+
+      - id: direct-requests-check
+        name: Direct Requests Check
+        entry: bash -c 'if grep -r "requests\.\(get\|post\|put\|patch\|delete\)(" client/api/ --include="*.py"; then echo "❌ Found direct requests calls - use self._session instead"; exit 1; else echo "✅ All API calls use authenticated session"; fi'
+        language: system
+        pass_filenames: false
+        always_run: true
+        description: "Prevent direct requests calls that bypass authentication"

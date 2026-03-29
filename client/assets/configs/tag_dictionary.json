@@ -1,0 +1,245 @@
+{
+  "tags": [
+    {
+      "id": "specification",
+      "ru": "Спецификация",
+      "en": "Specification",
+      "pl": "Specyfikacja",
+      "markers": [
+        "спецификация",
+        "specification",
+        "specyfikacja",
+        "list of materials"
+      ]
+    },
+    {
+      "id": "drawing",
+      "ru": "Чертеж",
+      "en": "Drawing",
+      "pl": "Rysunek",
+      "markers": [
+        "чертеж",
+        "чертежа",
+        "drawing",
+        "rysunek",
+        "schemat",
+        "схема"
+      ]
+    },
+    {
+      "id": "km",
+      "ru": "КМ",
+      "en": "KM",
+      "pl": "KM",
+      "markers": [
+        "\bКМ\b",
+        "конструкции металлические",
+        "steel structures",
+        "konstrukcje stalowe"
+      ]
+    },
+    {
+      "id": "kj",
+      "ru": "КЖ",
+      "en": "KJ",
+      "pl": "KŻ",
+      "markers": [
+        "\bКЖ\b",
+        "конструкции железобетонные",
+        "reinforced concrete",
+        "żelbetowe"
+      ]
+    },
+    {
+      "id": "invoice",
+      "ru": "Счет",
+      "en": "Invoice",
+      "pl": "Faktura",
+      "markers": [
+        "счет",
+        "invoice",
+        "faktura",
+        "f-ra",
+        "vat"
+      ]
+    },
+    {
+      "id": "certificate",
+      "ru": "Сертификат",
+      "en": "Certificate",
+      "pl": "Certyfikat",
+      "markers": [
+        "сертификат",
+        "atest",
+        "certificate",
+        "декларация",
+        "conformance",
+        "deklaracja"
+      ]
+    },
+    {
+      "id": "contract",
+      "ru": "Договор",
+      "en": "Contract",
+      "pl": "Umowa",
+      "markers": [
+        "договор",
+        "контракт",
+        "contract",
+        "agreement",
+        "umowa"
+      ]
+    },
+    {
+      "id": "passport",
+      "ru": "Паспорт",
+      "en": "Passport",
+      "pl": "Paszport",
+      "markers": [
+        "паспорт",
+        "passport",
+        "paszport techniczny",
+        "data sheet"
+      ]
+    },
+    {
+      "id": "manual",
+      "ru": "Инструкция",
+      "en": "Manual",
+      "pl": "Instrukcja",
+      "markers": [
+        "инструкция",
+        "manual",
+        "user guide",
+        "instrukcja",
+        "эксплуатация"
+      ]
+    },
+    {
+      "id": "project",
+      "ru": "Проект",
+      "en": "Project",
+      "pl": "Projekt",
+      "markers": [
+        "проект",
+        "project",
+        "documentation",
+        "документация",
+        "opis techniczny"
+      ]
+    },
+    {
+      "id": "standard",
+      "ru": "Норматив",
+      "en": "Standard",
+      "pl": "Norma",
+      "markers": [
+        "ГОСТ",
+        "ГОСТ Р",
+        "ISO",
+        "\bDIN\b",
+        "\bТУ\b",
+        "\bСТО\b",
+        "standard",
+        "norma"
+      ]
+    },
+    {
+      "id": "upd",
+      "ru": "УПД",
+      "en": "UPD",
+      "pl": "UPD",
+      "markers": [
+        "универсальный передаточный документ",
+        "\bУПД\b"
+      ]
+    },
+    {
+      "id": "torg12",
+      "ru": "ТОРГ-12",
+      "en": "TORG-12",
+      "pl": "TORG-12",
+      "markers": [
+        "ТОРГ-12",
+        "ТОРГ 12",
+        "товарная накладная"
+      ]
+    },
+    {
+      "id": "act",
+      "ru": "Акт",
+      "en": "Act",
+      "pl": "Akt/Protokół",
+      "markers": [
+        "\bакт\b",
+        "акт приемки",
+        "акт выполненных работ",
+        "protokół",
+        "acceptance act"
+      ]
+    },
+    {
+      "id": "profil",
+      "ru": "",
+      "en": "",
+      "pl": "",
+      "markers": []
+    },
+    {
+      "id": "RP",
+      "ru": "",
+      "en": "",
+      "pl": "",
+      "markers": []
+    },
+    {
+      "id": "RK",
+      "ru": "",
+      "en": "",
+      "pl": "",
+      "markers": []
+    },
+    {
+      "id": "RO",
+      "ru": "",
+      "en": "",
+      "pl": "",
+      "markers": []
+    },
+    {
+      "id": "rura",
+      "ru": "",
+      "en": "",
+      "pl": "",
+      "markers": []
+    },
+    {
+      "id": "katownik",
+      "ru": "",
+      "en": "",
+      "pl": "",
+      "markers": []
+    },
+    {
+      "id": "płaskownik",
+      "ru": "",
+      "en": "",
+      "pl": "",
+      "markers": []
+    },
+    {
+      "id": "blacha",
+      "ru": "",
+      "en": "",
+      "pl": "",
+      "markers": []
+    },
+    {
+      "id": "ceownik",
+      "ru": "",
+      "en": "",
+      "pl": "",
+      "markers": []
+    }
+  ]
+}

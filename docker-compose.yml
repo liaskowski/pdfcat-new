@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: pdflib
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: pdflib
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pdflib"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  valkey:
+    image: valkey/valkey:7.2-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+
+  api:
+    build: .
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+      valkey:
+        condition: service_started
+      search-go:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql://pdflib:password@db:5432/pdflib
+      REDIS_URL: redis://valkey:6379/0
+      SEARCH_GO_URL: http://search-go:8001
+      TASK_MODE: SERVER
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./uploads:/app/uploads
+    command: uvicorn server.main:app --host 0.0.0.0 --port 8000
+
+  worker:
+    build: .
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+      valkey:
+        condition: service_started
+      search-go:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql://pdflib:password@db:5432/pdflib
+      REDIS_URL: redis://valkey:6379/0
+      SEARCH_GO_URL: http://search-go:8001
+      TASK_MODE: SERVER
+    volumes:
+      - ./uploads:/app/uploads
+    command: dramatiq server.services.pdf_processor
+
+  search-go:
+    build: ./services/search-go
+    restart: always
+    ports:
+      - "8001:8001"
+    volumes:
+      - search_index_data:/app/data
+
+volumes:
+  postgres_data:
+  search_index_data:
