@@ -6,7 +6,7 @@ Run this script to verify all endpoints use consistent authentication.
 import inspect
 from fastapi import APIRouter
 from server.routers import documents
-from server.auth_utils import require_auth
+from server.security import oauth2_scheme as require_auth
 
 
 def check_endpoint_auth_consistency():

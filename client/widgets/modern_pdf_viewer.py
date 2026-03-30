@@ -12,7 +12,7 @@ from ..themes import ThemeManager
 from ..utils.translator import Translator
 from .pdf.render_worker import InitialRenderWorker, PageRenderWorker
 from .pdf.viewport_mgr import ViewportManager
-from ..utils.ocr_worker import OCRSearchWorker
+from ..utils.workers import OCRSearchWorker
 
 class ModernPDFViewer(QWidget):
     """
