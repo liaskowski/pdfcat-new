@@ -85,3 +85,9 @@ assets/icons/*
 !assets/images/pdfCat.jpg
 !assets/icons/pdfCat.ico
 !assets/index.html
+
+# AI instractions and logs
+.ai/
+docs/
+*.md
+!README*.md

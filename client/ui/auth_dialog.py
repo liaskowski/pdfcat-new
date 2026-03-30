@@ -267,25 +267,23 @@ class LoginDialog(QDialog):
             key_prefix = self._get_stable_key(self.profile['url'])
 
             if self.remember_cb.isChecked():
-                # Save credentials for future auto-login
+                # Save credentials for future login convenience (username only)
                 s.setValue(f"{key_prefix}/remember", "true")
                 s.setValue(f"{key_prefix}/username", self.username_input.text())
                 if self.email_input:
                     s.setValue(f"{key_prefix}/email", self.email_input.text())
                 
-                # Save session token for auto-login
-                s.setValue("token", token)
-                s.setValue("base_url", self.profile['url'])
-                log_info("auth", f"Credentials saved for user: {self.username_input.text()}")
+                log_info("auth", f"Login info saved for user: {self.username_input.text()}")
             else:
-                # Don't save anything
+                # Clear saved info
                 s.setValue(f"{key_prefix}/remember", "false")
                 s.remove(f"{key_prefix}/username")
                 s.remove(f"{key_prefix}/email")
-                # Don't save token if "Remember Me" not checked
-                s.remove("token")
-                s.remove("base_url")
-                log_info("auth", "Credentials not saved (Remember Me unchecked)")
+                log_info("auth", "Login info cleared")
+            
+            # Ensure no auto-login tokens remain
+            s.remove("token")
+            s.remove("base_url")
             
             s.sync()
             log_debug("auth", "Settings synced")

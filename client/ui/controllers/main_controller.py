@@ -55,10 +55,7 @@ class MainController:
         self._connect_signals()
         self._setup_shortcuts()
         
-        # Try to restore previous session (Remember Me)
-        if self._restore_session():
-            return True
-        
+        # Always require explicit authentication on startup
         return self._ensure_authenticated()
     
     def _restore_session(self) -> bool:
