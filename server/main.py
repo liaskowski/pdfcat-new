@@ -93,7 +93,7 @@ async def lifespan(app: FastAPI):
 
         # discovery = DiscoveryService(port=service_port)
         # discovery.start()
-        print("🔧 Discovery Service temporarily disabled for debugging")
+        print("Discovery Service temporarily disabled for debugging")
 
         # Init Admin
         db = SessionLocal()

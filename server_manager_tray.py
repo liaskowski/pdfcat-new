@@ -4,11 +4,8 @@ import subprocess
 import time
 import logging
 from pathlib import Path
-from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox
-from PyQt6.QtGui import QIcon, QAction
-from PyQt6.QtCore import QTimer, Qt
 
-# --- Logging Setup ---
+# --- Early Logging Setup (before heavy imports) ---
 BASE_DIR = Path(__file__).resolve().parent
 LOG_DIR = BASE_DIR / "logs"
 LOG_DIR.mkdir(exist_ok=True)
@@ -16,8 +13,34 @@ LOG_DIR.mkdir(exist_ok=True)
 logging.basicConfig(
     filename=LOG_DIR / "manager_tray.log",
     level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    force=True
 )
+
+logging.info("--- Tray Manager Starting ---")
+logging.info(f"Python: {sys.executable}")
+logging.info(f"CWD: {os.getcwd()}")
+
+# --- Fix for Portable PyQt6 Plugins ---
+QT_PLUGIN_PATH = BASE_DIR / "vendor" / "python" / "Lib" / "site-packages" / "PyQt6" / "Qt6" / "plugins"
+if QT_PLUGIN_PATH.exists():
+    os.environ["QT_PLUGIN_PATH"] = str(QT_PLUGIN_PATH)
+    logging.info(f"Set QT_PLUGIN_PATH to {QT_PLUGIN_PATH}")
+else:
+    logging.warning(f"QT_PLUGIN_PATH not found at {QT_PLUGIN_PATH}")
+
+try:
+    from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox
+    from PyQt6.QtGui import QIcon, QAction
+    from PyQt6.QtCore import QTimer, Qt
+    logging.info("PyQt6 imports successful")
+except ImportError as e:
+    logging.critical(f"Failed to import PyQt6. Ensure it is installed in the vendor environment. Error: {e}")
+    # We can't show a dialog because QApplication failed, but we logged it.
+    sys.exit(1)
+except Exception as e:
+    logging.critical(f"Unexpected error during import: {e}", exc_info=True)
+    sys.exit(1)
 
 # --- Configuration ---
 PYTHON_EXE = BASE_DIR / "vendor" / "python" / "python.exe"

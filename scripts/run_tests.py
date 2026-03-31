@@ -14,14 +14,15 @@ import os
 import time
 
 # Add project root to path
-project_root = os.path.dirname(os.path.abspath(__file__))
+# Script is in scripts/ folder, so root is one level up
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 
 def run_tests(suite, verbosity=2):
     """Run test suite and print summary"""
     print("=" * 70)
-    print("PDFCAT Batch Upload Test Suite")
+    print("PDFCAT Test Suite")
     print("=" * 70)
     print()
     
@@ -60,56 +61,32 @@ def run_tests(suite, verbosity=2):
 
 
 def get_all_tests():
-    """Get all batch upload tests"""
+    """Get all tests from tests/ directory"""
     loader = unittest.TestLoader()
-    suite = unittest.TestSuite()
-    
-    # Discover tests from tests directory
     test_dir = os.path.join(project_root, "tests")
     
-    # Batch upload tests
-    suite.addTests(loader.discover(test_dir, pattern="test_batch_upload.py"))
-    
-    # Upload worker tests
-    suite.addTests(loader.discover(test_dir, pattern="test_upload_worker.py"))
-    
-    # Stress tests
-    suite.addTests(loader.discover(test_dir, pattern="test_batch_stress.py"))
-    
-    return suite
+    # Recursively discover all tests
+    return loader.discover(test_dir, pattern="test_*.py", top_level_dir=project_root)
 
 
 def get_stress_tests():
     """Get only stress tests"""
     loader = unittest.TestLoader()
-    suite = unittest.TestSuite()
-    
     test_dir = os.path.join(project_root, "tests")
-    suite.addTests(loader.discover(test_dir, pattern="test_batch_stress.py"))
-    
-    return suite
+    return loader.discover(test_dir, pattern="*stress*.py", top_level_dir=project_root)
 
 
 def get_unit_tests():
-    """Get only unit tests (no stress tests)"""
+    """Get only unit tests"""
     loader = unittest.TestLoader()
-    suite = unittest.TestSuite()
-    
-    test_dir = os.path.join(project_root, "tests")
-    
-    # Batch upload tests
-    suite.addTests(loader.discover(test_dir, pattern="test_batch_upload.py"))
-    
-    # Upload worker tests
-    suite.addTests(loader.discover(test_dir, pattern="test_upload_worker.py"))
-    
-    return suite
+    test_dir = os.path.join(project_root, "tests", "unit")
+    return loader.discover(test_dir, pattern="test_*.py", top_level_dir=project_root)
 
 
 def main():
     import argparse
     
-    parser = argparse.ArgumentParser(description="Run batch upload tests")
+    parser = argparse.ArgumentParser(description="Run pdfCAT tests")
     parser.add_argument(
         "--stress",
         action="store_true",
@@ -118,7 +95,12 @@ def main():
     parser.add_argument(
         "--unit",
         action="store_true",
-        help="Run unit tests only (no stress tests)"
+        help="Run unit tests only"
+    )
+    parser.add_argument(
+        "--integration",
+        action="store_true",
+        help="Run integration tests only"
     )
     parser.add_argument(
         "--coverage",
@@ -140,9 +122,14 @@ def main():
     elif args.unit:
         suite = get_unit_tests()
         print("Running unit tests only...")
+    elif args.integration:
+        loader = unittest.TestLoader()
+        test_dir = os.path.join(project_root, "tests", "integration")
+        suite = loader.discover(test_dir, pattern="test_*.py", top_level_dir=project_root)
+        print("Running integration tests only...")
     else:
         suite = get_all_tests()
-        print("Running all batch upload tests...")
+        print("Running all tests...")
     
     # Run with coverage if requested
     if args.coverage:
