@@ -49,7 +49,7 @@ tmp/
 
 # Uploads and personal documents
 uploads/
-pdf/
+/pdf/
 *.pdf
 downloaded_*.pdf
 test_download.pdf
