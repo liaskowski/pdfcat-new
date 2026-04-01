@@ -91,9 +91,13 @@ async def lifespan(app: FastAPI):
         except Exception:
             service_port = 8000
 
-        discovery = DiscoveryService(port=service_port)
-        discovery.start()
-        app.state.discovery = discovery
+        try:
+            discovery = DiscoveryService(port=service_port)
+            discovery.start()
+            app.state.discovery = discovery
+        except Exception as e:
+            logger.error(f"Failed to start discovery service: {e}")
+            app.state.discovery = None
 
         # Init Admin
         db = SessionLocal()
@@ -142,7 +146,8 @@ async def lifespan(app: FastAPI):
         logger.debug(f"Cleanup info: {e}")
     # Stop discovery service
     if hasattr(app.state, "discovery"):
-        app.state.discovery.stop()
+        if app.state.discovery:
+            app.state.discovery.stop()
     
     logger.info("Cleanup complete.")
 
