@@ -12,7 +12,11 @@ class DiscoveryService:
         self.port = port
         self.zeroconf: Optional[Zeroconf] = None
         self.service_info: Optional[ServiceInfo] = None
-        self.service_name = f"PDFLib-{socket.gethostname()}.__pdflib._tcp.local."
+        # Sanitize hostname for mDNS (replace _ with -)
+        hostname = socket.gethostname()
+        self.clean_hostname = hostname.replace("_", "-")
+        self.type = "_pdflib._tcp.local."
+        self.service_name = f"PDFLib-{self.clean_hostname}.{self.type}"
 
     def _get_all_local_ips(self) -> List[str]:
         """Get all non-loopback IPv4 addresses."""
@@ -54,20 +58,19 @@ class DiscoveryService:
             self.zeroconf = Zeroconf(ip_version=IPVersion.V4Only)
             
             local_ips = self._get_all_local_ips()
-            hostname = socket.gethostname()
             
             # We pack all IPs into the ServiceInfo
             addresses = [socket.inet_aton(ip) for ip in local_ips]
 
-            desc = {'path': '/', 'hostname': hostname}
+            desc = {'path': '/', 'hostname': self.clean_hostname}
             
             self.service_info = ServiceInfo(
-                "_pdflib._tcp.local.",
+                self.type,
                 self.service_name,
                 addresses=addresses,
                 port=self.port,
                 properties=desc,
-                server=f"{hostname}.local.",
+                server=f"{self.clean_hostname}.local.",
             )
 
             logger.info(f"🚀 Registering Zeroconf service: {self.service_name} at {local_ips}:{self.port}")
