@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
 
 # Initialize logging FIRST before any other imports
-from client.utils.logger import get_logger, log_info, log_error, log_debug
+from client.utils.logger import get_logger, log_info, log_error, log_debug, log_warning, log_critical
 
 logger = get_logger("client.main")
 
