@@ -18,61 +18,52 @@ class DiscoveryService:
         self.type = "_pdflib._tcp.local."
         self.service_name = f"PDFLib-{self.clean_hostname}.{self.type}"
 
-    def _get_all_local_ips(self) -> List[str]:
-        """Get all non-loopback IPv4 addresses."""
-        ips = []
+    def _get_best_local_ip(self) -> str:
+        """Identify the most likely primary LAN IP address."""
         try:
-            hostname = socket.gethostname()
-            logger.info(f"Checking IPs for hostname: {hostname}")
-            
-            # 1. Try gethostbyname_ex
-            try:
-                for ip in socket.gethostbyname_ex(hostname)[2]:
-                    if not ip.startswith("127."):
-                        ips.append(ip)
-            except Exception as e:
-                logger.debug(f"gethostbyname_ex failed: {e}")
-            
-            # 2. Try main gateway IP
+            # Try to connect to an external IP to see which local interface is used
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             try:
+                # doesn't even have to be reachable
                 s.connect(('8.8.8.8', 1))
-                main_ip = s.getsockname()[0]
-                if main_ip not in ips and not main_ip.startswith("127."):
-                    ips.append(main_ip)
-            except Exception as e:
-                logger.debug(f"Gateway IP detection failed: {e}")
+                primary_ip = s.getsockname()[0]
+                if not primary_ip.startswith("127.") and not primary_ip.startswith("192.168.56."):
+                    logger.info(f"🎯 Identified primary IP via gateway: {primary_ip}")
+                    return primary_ip
             finally:
                 s.close()
         except Exception as e:
-            logger.error(f"General IP discovery error: {e}")
-            
-        final_ips = list(set(ips))
-        logger.info(f"Detected local IPs: {final_ips}")
-        return final_ips if final_ips else ["127.0.0.1"]
+            logger.debug(f"Gateway IP detection failed: {e}")
+
+        # Fallback to general lookup
+        try:
+            hostname = socket.gethostname()
+            ips = socket.gethostbyname_ex(hostname)[2]
+            # Exclude loopback and VirtualBox
+            valid_ips = [ip for ip in ips if not ip.startswith("127.") and not ip.startswith("192.168.56.")]
+            if valid_ips:
+                logger.info(f"📋 Found valid IPs via hostname: {valid_ips}")
+                return valid_ips[0]
+        except Exception:
+            pass
+
+        return "127.0.0.1"
 
     def start(self):
         """Register the service in the local network"""
         try:
-            local_ips = self._get_all_local_ips()
+            best_ip = self._get_best_local_ip()
             
-            # Filter out likely virtual/bridge IPs if we have more than one IP
-            # We prefer 192.168.x.x or 10.x.x.x
-            filtered_ips = local_ips
-            if len(local_ips) > 1:
-                filtered_ips = [ip for ip in local_ips if ip.startswith(("192.168.", "10.", "172.16.", "172.31."))]
-                # If filter removed everything, fallback to original
-                if not filtered_ips:
-                    filtered_ips = local_ips
+            if best_ip == "127.0.0.1":
+                logger.warning("⚠️ Only loopback IP found. Discovery might not work across LAN.")
 
-            logger.info(f"Starting Zeroconf instance on interfaces: {filtered_ips}...")
-            # Passing interfaces explicitly helps avoid EventLoopBlocked on Windows
-            self.zeroconf = Zeroconf(interfaces=filtered_ips, ip_version=IPVersion.V4Only)
+            logger.info(f"Starting Zeroconf instance on primary interface: {best_ip}...")
             
-            hostname = socket.gethostname()
+            # Using a single stable interface avoids EventLoopBlocked on Windows
+            self.zeroconf = Zeroconf(interfaces=[best_ip], ip_version=IPVersion.V4Only)
             
-            # We pack all IPs into the ServiceInfo
-            addresses = [socket.inet_aton(ip) for ip in filtered_ips]
+            # Pack the IP into ServiceInfo
+            addresses = [socket.inet_aton(best_ip)]
 
             desc = {'path': '/', 'hostname': self.clean_hostname}
             
@@ -85,7 +76,7 @@ class DiscoveryService:
                 server=f"{self.clean_hostname}.local.",
             )
 
-            logger.info(f"🚀 Registering Zeroconf service: {self.service_name} at {filtered_ips}:{self.port}")
+            logger.info(f"🚀 Registering Zeroconf service: {self.service_name} at {best_ip}:{self.port}")
             self.zeroconf.register_service(self.service_info)
             
         except Exception as e:
