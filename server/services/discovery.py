@@ -54,13 +54,25 @@ class DiscoveryService:
     def start(self):
         """Register the service in the local network"""
         try:
-            logger.info("Starting Zeroconf instance...")
-            self.zeroconf = Zeroconf(ip_version=IPVersion.V4Only)
-            
             local_ips = self._get_all_local_ips()
             
+            # Filter out likely virtual/bridge IPs if we have more than one IP
+            # We prefer 192.168.x.x or 10.x.x.x
+            filtered_ips = local_ips
+            if len(local_ips) > 1:
+                filtered_ips = [ip for ip in local_ips if ip.startswith(("192.168.", "10.", "172.16.", "172.31."))]
+                # If filter removed everything, fallback to original
+                if not filtered_ips:
+                    filtered_ips = local_ips
+
+            logger.info(f"Starting Zeroconf instance on interfaces: {filtered_ips}...")
+            # Passing interfaces explicitly helps avoid EventLoopBlocked on Windows
+            self.zeroconf = Zeroconf(interfaces=filtered_ips, ip_version=IPVersion.V4Only)
+            
+            hostname = socket.gethostname()
+            
             # We pack all IPs into the ServiceInfo
-            addresses = [socket.inet_aton(ip) for ip in local_ips]
+            addresses = [socket.inet_aton(ip) for ip in filtered_ips]
 
             desc = {'path': '/', 'hostname': self.clean_hostname}
             
@@ -73,7 +85,7 @@ class DiscoveryService:
                 server=f"{self.clean_hostname}.local.",
             )
 
-            logger.info(f"🚀 Registering Zeroconf service: {self.service_name} at {local_ips}:{self.port}")
+            logger.info(f"🚀 Registering Zeroconf service: {self.service_name} at {filtered_ips}:{self.port}")
             self.zeroconf.register_service(self.service_info)
             
         except Exception as e:
