@@ -8,9 +8,7 @@ if %errorLevel% neq 0 (
     exit /b 1
 )
 
-set "PYTHON_EXE=%~dp0vendor\python\python.exe"
-
-echo [INFO] Configuring Windows Firewall for pdfCAT...
+echo [INFO] Configuring Windows Firewall for pdfCAT (Ultra-Reliable Mode)...
 
 :: 1. Allow Port 8000 (Main API)
 echo [1/5] Allowing Port 8000 (Main API)...
@@ -27,25 +25,20 @@ echo [3/5] Allowing Port 8002 (PDF Service)...
 netsh advfirewall firewall delete rule name="PDFLib_PDFSvc" >nul 2>&1
 netsh advfirewall firewall add rule name="PDFLib_PDFSvc" dir=in action=allow protocol=TCP localport=8002 profile=any
 
-:: 4. Allow mDNS (Multicast DNS) for Zeroconf Discovery
-echo [4/5] Allowing Port 5353 (UDP) for Zeroconf/mDNS...
-netsh advfirewall firewall delete rule name="PDFLib_Zeroconf" >nul 2>&1
-netsh advfirewall firewall add rule name="PDFLib_Zeroconf" dir=in action=allow protocol=UDP localport=5353 profile=any
+:: 4. Allow UDP Beacon Port (50010) for Discovery
+echo [4/5] Allowing Port 50010 (UDP) for Discovery Beacon...
+netsh advfirewall firewall delete rule name="PDFLib_Beacon" >nul 2>&1
+netsh advfirewall firewall add rule name="PDFLib_Beacon" dir=in action=allow protocol=UDP localport=50010 profile=any
 
-:: 5. Allow Python App specifically (very important for discovery)
+:: 5. Allow Python executable (General rule)
+set "PYTHON_EXE=%~dp0vendor\python\python.exe"
 if exist "%PYTHON_EXE%" (
-    echo [5/5] Allowing Python executable for Network Discovery...
+    echo [5/5] Allowing Python executable for all network tasks...
     netsh advfirewall firewall delete rule name="PDFLib_Python" >nul 2>&1
     netsh advfirewall firewall add rule name="PDFLib_Python" dir=in action=allow program="%PYTHON_EXE%" enable=yes profile=any
-) else (
-    echo [SKIP] Portable Python not found at %PYTHON_EXE%
 )
 
 echo.
-echo [SUCCESS] Network environment is now configured.
-echo 1. Ports 8000-8002 are open (TCP).
-echo 2. Port 5353 is open (UDP) for Discovery.
-echo 3. Python is allowed through firewall (enables Zeroconf/mDNS).
-echo.
-echo Your LAN computers can now connect to this server AUTOMATICALLY.
+echo [SUCCESS] Network is now ready. 
+echo Discovery now uses ultra-reliable UDP Beacons.
 pause
