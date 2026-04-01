@@ -6,8 +6,15 @@ class Settings(BaseSettings):
     """Настройки приложения"""
     SECRET_KEY: str = "your-secret-key-change-in-production-use-env-variable"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 365  # 1 year (essentially no expiration for desktop app)
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 365  # 1 year
     UPLOAD_DIR: str = "uploads"
+
+    # Server Settings (found in .env)
+    host: str = "0.0.0.0"
+    port: int = 8000
+    debug: bool = False
+    admin_password: str = "admin"
+    tesseract_cmd: Optional[str] = None
 
     # SMTP Settings
     SMTP_HOST: str = "sandbox.smtp.mailtrap.io"
@@ -27,6 +34,7 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 settings = Settings()
 
