@@ -84,16 +84,16 @@ async def lifespan(app: FastAPI):
         from server.services.pdf_processor import init_pdf_processor
         init_pdf_processor(max_workers=2)  # Limit to 2 concurrent PDF processing tasks
 
-        # Start Discovery Service (temporarily disabled for debugging)
+        # Start Discovery Service (mDNS/Zeroconf)
         port_raw = os.environ.get("PDFLIB_PORT", os.environ.get("PORT", "8000"))
         try:
             service_port = int(port_raw)
         except Exception:
             service_port = 8000
 
-        # discovery = DiscoveryService(port=service_port)
-        # discovery.start()
-        print("Discovery Service temporarily disabled for debugging")
+        discovery = DiscoveryService(port=service_port)
+        discovery.start()
+        app.state.discovery = discovery
 
         # Init Admin
         db = SessionLocal()
@@ -140,9 +140,11 @@ async def lifespan(app: FastAPI):
         logger.info("Cleaning up PDF processing queue...")
     except Exception as e:
         logger.debug(f"Cleanup info: {e}")
-    # discovery.stop() - if needed
-
-app = FastAPI(title="PDF Library API", version="1.0.0", lifespan=lifespan)
+    # Stop discovery service
+    if hasattr(app.state, "discovery"):
+        app.state.discovery.stop()
+    
+    logger.info("Cleanup complete.")
 
 app.mount("/static", StaticFiles(directory="server/static"), name="static")
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
