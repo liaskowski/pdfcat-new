@@ -19,28 +19,38 @@ class DiscoveryService:
         ips = []
         try:
             hostname = socket.gethostname()
-            # This returns all IPs associated with the hostname
-            for ip in socket.gethostbyname_ex(hostname)[2]:
-                if not ip.startswith("127."):
-                    ips.append(ip)
+            logger.info(f"Checking IPs for hostname: {hostname}")
             
-            # Additional check via socket to find the 'main' gateway IP
+            # 1. Try gethostbyname_ex
+            try:
+                for ip in socket.gethostbyname_ex(hostname)[2]:
+                    if not ip.startswith("127."):
+                        ips.append(ip)
+            except Exception as e:
+                logger.debug(f"gethostbyname_ex failed: {e}")
+            
+            # 2. Try main gateway IP
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             try:
                 s.connect(('8.8.8.8', 1))
                 main_ip = s.getsockname()[0]
-                if main_ip not in ips:
+                if main_ip not in ips and not main_ip.startswith("127."):
                     ips.append(main_ip)
+            except Exception as e:
+                logger.debug(f"Gateway IP detection failed: {e}")
             finally:
                 s.close()
         except Exception as e:
-            logger.error(f"Error getting local IPs: {e}")
+            logger.error(f"General IP discovery error: {e}")
             
-        return list(set(ips)) if ips else ["127.0.0.1"]
+        final_ips = list(set(ips))
+        logger.info(f"Detected local IPs: {final_ips}")
+        return final_ips if final_ips else ["127.0.0.1"]
 
     def start(self):
         """Register the service in the local network"""
         try:
+            logger.info("Starting Zeroconf instance...")
             self.zeroconf = Zeroconf(ip_version=IPVersion.V4Only)
             
             local_ips = self._get_all_local_ips()
@@ -64,7 +74,7 @@ class DiscoveryService:
             self.zeroconf.register_service(self.service_info)
             
         except Exception as e:
-            logger.error(f"❌ Failed to start Zeroconf discovery: {e}")
+            logger.error(f"❌ Failed to start Zeroconf discovery: {e}", exc_info=True)
 
     def stop(self):
         """Unregister the service"""
