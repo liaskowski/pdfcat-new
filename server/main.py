@@ -146,6 +146,8 @@ async def lifespan(app: FastAPI):
     
     logger.info("Cleanup complete.")
 
+app = FastAPI(title="PDF Library API", version="1.0.0", lifespan=lifespan)
+
 app.mount("/static", StaticFiles(directory="server/static"), name="static")
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
