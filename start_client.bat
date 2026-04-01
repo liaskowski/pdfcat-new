@@ -13,7 +13,7 @@ set "SITE_PACKAGES=%~dp0vendor\python\Lib\site-packages"
 :: 2. Sync Dependencies (Fast check)
 echo [INFO] Checking libraries...
 if not exist "%SITE_PACKAGES%" mkdir "%SITE_PACKAGES%"
-"%UV_EXE%" pip install --python "%PYTHON_EXE%" --target "%SITE_PACKAGES%" .
+"%UV_EXE%" pip install --python "%PYTHON_EXE%" --target "%SITE_PACKAGES%" -r pyproject.toml
 if %errorlevel% neq 0 (
     echo [ERROR] Failed to install dependencies!
     pause

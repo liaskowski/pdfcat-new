@@ -24,7 +24,7 @@ if not exist "%PYTHONW_EXE%" (
 if exist "%UV_EXE%" (
     echo [INFO] Syncing libraries with UV...
     if not exist "%SITE_PACKAGES%" mkdir "%SITE_PACKAGES%"
-    "%UV_EXE%" pip install --python "%PYTHON_EXE%" --target "%SITE_PACKAGES%" . --quiet
+    "%UV_EXE%" pip install --python "%PYTHON_EXE%" --target "%SITE_PACKAGES%" -r pyproject.toml --quiet
 )
 
 :: 4. Launch Tray Manager
