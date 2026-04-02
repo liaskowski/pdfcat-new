@@ -89,6 +89,12 @@ class ServerSelectionDialog(QDialog):
         self.scan_btn.clicked.connect(self.start_scan)
         layout.addWidget(self.scan_btn)
         
+        # Network Check Button
+        self.check_btn = QPushButton("Check Network Capability")
+        self.check_btn.setIcon(qta.icon('fa5s.network-wired', color='black'))
+        self.check_btn.clicked.connect(self.perform_network_check)
+        layout.addWidget(self.check_btn)
+        
         # Connect Button
         self.connect_btn = QPushButton("Connect")
         self.connect_btn.setObjectName("primaryButton")
@@ -99,24 +105,54 @@ class ServerSelectionDialog(QDialog):
         self.discovery_worker = DiscoveryWorker()
         self.discovery_worker.server_found.connect(self.on_server_found)
 
+    def perform_network_check(self):
+        """Run network diagnostics to see if discovery is possible."""
+        from ..utils.network_check import perform_full_network_check
+        
+        logger.info("Running network diagnostics...")
+        results = perform_full_network_check()
+        
+        msg = "--- Network Diagnostics ---\n\n"
+        msg += f"Status: {'✅ OK' if results['can_discover'] else '❌ Limited'}\n"
+        msg += f"Interfaces: {len(results['interfaces'])}\n"
+        for i in results['interfaces']:
+            msg += f"  - {i['ip']}\n"
+            
+        msg += f"\nUDP Port 50010: {'✅ Available' if results['udp_discovery_port_ok'] else '❌ Blocked'}\n"
+        
+        fw = results['firewall']
+        msg += f"Firewall Rules: {fw['status'].upper()}\n"
+        if 'rules' in fw:
+            for rule, status in fw['rules'].items():
+                msg += f"  - {rule}: {'✅ Found' if status else '❌ Missing'}\n"
+        
+        if not results['can_discover'] or fw['status'] == 'warning':
+            msg += "\n💡 Suggestion: Run 'allow_port.bat' as Administrator to fix firewall issues."
+            
+        QMessageBox.information(self, "Network Capability Check", msg)
+
     def _load_profiles(self):
+        logger.debug("Loading server profiles...")
         s = QSettings("pdflib", "client")
         profiles_json = s.value("server_profiles", "[]")
         try:
             self.profiles = json.loads(profiles_json)
-        except:
+        except Exception as e:
+            logger.error(f"Failed to parse server profiles: {e}")
             self.profiles = []
             
         # Migration for legacy single-server config
         if not self.profiles:
             legacy_url = s.value("base_url")
             if legacy_url:
+                logger.info(f"Migrating legacy server URL: {legacy_url}")
                 self.profiles.append({"name": "Default Server", "url": legacy_url, "use_email": False})
                 self._save_profiles()
         
         self.refresh_list()
 
     def _save_profiles(self):
+        logger.debug("Saving server profiles...")
         s = QSettings("pdflib", "client")
         s.setValue("server_profiles", json.dumps(self.profiles))
         s.sync()
@@ -130,7 +166,9 @@ class ServerSelectionDialog(QDialog):
     def on_add(self):
         dlg = ServerEditDialog(self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
-            self.profiles.append(dlg.get_data())
+            data = dlg.get_data()
+            logger.info(f"Adding new server profile: {data['name']} ({data['url']})")
+            self.profiles.append(data)
             self._save_profiles()
             self.refresh_list()
 
@@ -139,28 +177,38 @@ class ServerSelectionDialog(QDialog):
         if row < 0: return
         dlg = ServerEditDialog(self, self.profiles[row])
         if dlg.exec() == QDialog.DialogCode.Accepted:
-            self.profiles[row] = dlg.get_data()
+            data = dlg.get_data()
+            logger.info(f"Updating server profile at index {row}: {data['name']}")
+            self.profiles[row] = data
             self._save_profiles()
             self.refresh_list()
 
     def on_delete(self):
         row = self.profile_list.currentRow()
         if row >= 0:
+            profile = self.profiles[row]
+            logger.info(f"Deleting server profile: {profile['name']}")
             self.profiles.pop(row)
             self._save_profiles()
             self.refresh_list()
 
     def start_scan(self):
-        self.scan_btn.setText("Scanning...")
-        self.scan_btn.setEnabled(False)
+        logger.info("Starting network scan for servers...")
+        self.scan_btn.setText("Scanning... (Click to stop)")
         
         if not self.discovery_worker.isRunning():
             self.discovery_worker.start()
+            self.scan_btn.clicked.disconnect()
+            self.scan_btn.clicked.connect(self.stop_scan)
         else:
             self.discovery_worker.scan()
-            
-        # Reset UI after 5 seconds
-        QTimer.singleShot(5000, self._reset_scan_btn)
+
+    def stop_scan(self):
+        logger.info("Stopping network scan...")
+        self.discovery_worker.stop()
+        self._reset_scan_btn()
+        self.scan_btn.clicked.disconnect()
+        self.scan_btn.clicked.connect(self.start_scan)
 
     def _reset_scan_btn(self):
         self.scan_btn.setText("Scan Network for Servers")
@@ -168,12 +216,15 @@ class ServerSelectionDialog(QDialog):
 
     def on_server_found(self, ip, hostname, port):
         url = f"http://{ip}:{port}"
+        logger.info(f"Server found via discovery: {hostname} at {url}")
         # Check if already exists in profiles
         for p in self.profiles:
             if p['url'].rstrip('/') == url.rstrip('/'):
+                logger.debug(f"Server {url} already in profiles, skipping.")
                 return
             
         # Add to local temporary list and update UI
+        logger.info(f"Adding newly discovered server to profiles: {hostname}")
         new_profile = {"name": f"{hostname} (found)", "url": url, "use_email": False}
         self.profiles.append(new_profile)
         self._save_profiles()
@@ -182,9 +233,11 @@ class ServerSelectionDialog(QDialog):
     def on_connect(self):
         row = self.profile_list.currentRow()
         if row < 0:
+            logger.warning("Connection attempt without server selection")
             QMessageBox.warning(self, "Selection", "Please select a server.")
             return
         self.selected_profile = self.profiles[row]
+        logger.info(f"Connecting to selected server: {self.selected_profile['name']} ({self.selected_profile['url']})")
         self.accept()
 
     def _center_on_screen(self):

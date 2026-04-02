@@ -368,7 +368,7 @@ class PreviewPanel(QFrame):
             return
             
         if not url.startswith("http"):
-            full_url = config.get_url(url)
+            full_url = f"{self.api.base_url}/{url.lstrip('/')}"
         else:
             full_url = url
 

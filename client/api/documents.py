@@ -2,7 +2,6 @@ from typing import Any, Optional, List
 import requests
 from pathlib import Path
 from .base import APIBase, APIError
-from .config import config
 from .schemas import APIDocument, APIFolder, APICategory, APIFileType, APIFileHistory
 
 class DocumentsAPI(APIBase):
@@ -26,7 +25,7 @@ class DocumentsAPI(APIBase):
         if not self._token:
             raise RuntimeError("JWT token is not set")
 
-        url = config.get_url("/documents/upload")
+        url = f"{self.base_url}/documents/upload"
         data: dict[str, Any] = {
             "title": title,
             "is_private": "true" if is_private else "false",
@@ -69,7 +68,7 @@ class DocumentsAPI(APIBase):
         if not self._token:
             raise RuntimeError("JWT token is not set")
 
-        url = config.get_url("/search")
+        url = f"{self.base_url}/search"
         params = {"q": query}
 
         # Use session for connection pooling (NOT direct requests)
@@ -89,7 +88,7 @@ class DocumentsAPI(APIBase):
         if not self._token:
             raise RuntimeError("JWT token is not set")
 
-        url = config.get_url("/suggestions")
+        url = f"{self.base_url}/suggestions"
         resp = self._session.get(
             url,
             params={"q": query},
@@ -104,7 +103,7 @@ class DocumentsAPI(APIBase):
         if not self._token:
             raise RuntimeError("JWT token is not set")
 
-        url = config.get_url(f"/documents/{document_id}")
+        url = f"{self.base_url}/documents/{document_id}"
         resp = self._session.get(
             url,
             timeout=self._timeout,
@@ -134,7 +133,7 @@ class DocumentsAPI(APIBase):
 
         print(f"DEBUG API: Updating document {document_id} with title='{title}'")
         
-        url = config.get_url(f"/documents/{document_id}")
+        url = f"{self.base_url}/documents/{document_id}"
         payload = {
             "title": title,
             "category_id": category_id,
@@ -179,7 +178,7 @@ class DocumentsAPI(APIBase):
         if not self._token:
             raise RuntimeError("JWT token is not set")
 
-        url = config.get_url(f"/documents/{document_id}/content")
+        url = f"{self.base_url}/documents/{document_id}/content"
         data: dict[str, Any] = {
             "use_ocr": "true" if use_ocr else "false",
         }
@@ -202,7 +201,7 @@ class DocumentsAPI(APIBase):
         if not self._token:
             raise RuntimeError("JWT token is not set")
 
-        url = config.get_url(f"/documents/{document_id}/history")
+        url = f"{self.base_url}/documents/{document_id}/history"
         resp = self._session.get(
             url,
             timeout=self._timeout,
@@ -216,7 +215,7 @@ class DocumentsAPI(APIBase):
         if not self._token:
             raise RuntimeError("JWT token is not set")
 
-        url = config.get_url(f"/documents/{document_id}/preview")
+        url = f"{self.base_url}/documents/{document_id}/preview"
         resp = self._session.get(
             url,
             timeout=self._timeout,
@@ -238,7 +237,7 @@ class DocumentsAPI(APIBase):
         print(f"DEBUG API: Session headers: {dict(self._session.headers)}")
 
         try:
-            url = config.get_url(f"/documents/{document_id}/download")
+            url = f"{self.base_url}/documents/{document_id}/download"
             resp = self._session.get(
                 url,
                 timeout=self._timeout,
@@ -264,7 +263,7 @@ class DocumentsAPI(APIBase):
         if not self._token:
             raise RuntimeError("JWT token is not set")
 
-        url = config.get_url("/documents/")
+        url = f"{self.base_url}/documents/"
         params: dict[str, Any] = {"skip": skip, "limit": limit, "view_mode": view_mode}
         if folder_id is not None:
             params["folder_id"] = folder_id
@@ -286,7 +285,7 @@ class DocumentsAPI(APIBase):
         if not self._token:
             raise RuntimeError("JWT token is not set")
         
-        url = config.get_url("/folders/")
+        url = f"{self.base_url}/folders/"
         payload = {"name": name, "is_public": is_public}
         if parent_id is not None:
             payload["parent_id"] = parent_id
@@ -305,7 +304,7 @@ class DocumentsAPI(APIBase):
         if not self._token:
             raise RuntimeError("JWT token is not set")
 
-        url = config.get_url("/folders/")
+        url = f"{self.base_url}/folders/"
         params = {}
         if parent_id is not None:
             params["parent_id"] = parent_id
@@ -323,7 +322,7 @@ class DocumentsAPI(APIBase):
         if not self._token:
             raise RuntimeError("JWT token is not set")
 
-        url = config.get_url(f"/folders/{folder_id}")
+        url = f"{self.base_url}/folders/{folder_id}"
         resp = self._session.delete(url, timeout=self._timeout)
         if resp.status_code != 200:
             raise APIError(resp.status_code, "Delete folder failed", resp.text)
@@ -338,7 +337,7 @@ class DocumentsAPI(APIBase):
         if not self._token:
             raise RuntimeError("JWT token is not set")
         
-        url = config.get_url(f"/folders/{folder_id}")
+        url = f"{self.base_url}/folders/{folder_id}"
         payload = {}
         if name is not None:
             payload["name"] = name
@@ -357,7 +356,7 @@ class DocumentsAPI(APIBase):
         if not self._token:
             raise RuntimeError("JWT token is not set")
 
-        url = config.get_url(f"/documents/{document_id}")
+        url = f"{self.base_url}/documents/{document_id}"
         resp = self._session.delete(
             url,
             timeout=self._timeout,
@@ -369,7 +368,7 @@ class DocumentsAPI(APIBase):
         if not self._token:
             raise RuntimeError("JWT token is not set")
 
-        url = config.get_url(f"/documents/{document_id}/duplicate")
+        url = f"{self.base_url}/documents/{document_id}/duplicate"
         data = {}
         if folder_id is not None:
             data["folder_id"] = folder_id
@@ -386,27 +385,27 @@ class DocumentsAPI(APIBase):
 
     # Category Management
     def get_categories(self) -> List[APICategory]:
-        url = config.get_url("/categories/")
+        url = f"{self.base_url}/categories/"
         resp = self._session.get(url, timeout=self._timeout)
         if resp.status_code != 200:
             raise APIError(resp.status_code, "Failed to get categories", resp.text)
         return [APICategory.from_json(item) for item in resp.json()]
 
     def create_category(self, name: str) -> APICategory:
-        url = config.get_url("/categories/")
+        url = f"{self.base_url}/categories/"
         resp = self._session.post(url, json={"name": name}, timeout=self._timeout)
         if resp.status_code != 200:
             raise APIError(resp.status_code, "Failed to create category", resp.text)
         return APICategory.from_json(resp.json())
 
     def delete_category(self, category_id: int) -> None:
-        url = config.get_url(f"/categories/{category_id}")
+        url = f"{self.base_url}/categories/{category_id}"
         resp = self._session.delete(url, timeout=self._timeout)
         if resp.status_code != 200:
             raise APIError(resp.status_code, "Failed to delete category", resp.text)
 
     def update_category(self, category_id: int, name: str) -> APICategory:
-        url = config.get_url(f"/categories/{category_id}")
+        url = f"{self.base_url}/categories/{category_id}"
         resp = self._session.put(url, json={"name": name}, timeout=self._timeout)
         if resp.status_code != 200:
             raise APIError(resp.status_code, "Failed to update category", resp.text)
@@ -414,27 +413,27 @@ class DocumentsAPI(APIBase):
 
     # File Type Management
     def get_file_types(self) -> List[APIFileType]:
-        url = config.get_url("/file_types/")
+        url = f"{self.base_url}/file_types/"
         resp = self._session.get(url, timeout=self._timeout)
         if resp.status_code != 200:
             raise APIError(resp.status_code, "Failed to get file types", resp.text)
         return [APIFileType.from_json(item) for item in resp.json()]
 
     def create_file_type(self, name: str) -> APIFileType:
-        url = config.get_url("/file_types/")
+        url = f"{self.base_url}/file_types/"
         resp = self._session.post(url, json={"name": name}, timeout=self._timeout)
         if resp.status_code != 200:
             raise APIError(resp.status_code, "Failed to create file type", resp.text)
         return APIFileType.from_json(resp.json())
 
     def delete_file_type(self, file_type_id: int) -> None:
-        url = config.get_url(f"/file_types/{file_type_id}")
+        url = f"{self.base_url}/file_types/{file_type_id}"
         resp = self._session.delete(url, timeout=self._timeout)
         if resp.status_code != 200:
             raise APIError(resp.status_code, "Failed to delete file type", resp.text)
 
     def update_file_type(self, file_type_id: int, name: str) -> APIFileType:
-        url = config.get_url(f"/file_types/{file_type_id}")
+        url = f"{self.base_url}/file_types/{file_type_id}"
         resp = self._session.put(url, json={"name": name}, timeout=self._timeout)
         if resp.status_code != 200:
             raise APIError(resp.status_code, "Failed to update file type", resp.text)

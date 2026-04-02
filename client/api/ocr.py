@@ -3,8 +3,6 @@ import requests
 from pathlib import Path
 from .base import APIBase, APIError
 
-from .config import config
-
 class OCRAPI(APIBase):
     def recognize_document(self, file_path: str, lang: str = "rus+eng") -> str:
         """
@@ -13,7 +11,7 @@ class OCRAPI(APIBase):
         if not self._token:
             raise RuntimeError("JWT token is not set")
 
-        url = config.get_url("/ocr/recognize")
+        url = f"{self.base_url}/ocr/recognize"
         
         with open(file_path, "rb") as f:
             filename = Path(file_path).name

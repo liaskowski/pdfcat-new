@@ -369,7 +369,7 @@ class MainController:
             self.ui.title_bar.set_default_avatar()
             return
             
-        full_url = url if url.startswith("http") else config.get_url(url)
+        full_url = url if url.startswith("http") else f"{self.api.base_url}/{url.lstrip('/')}"
             
         # Use AvatarWorker for non-blocking load
         self._avatar_worker = AvatarWorker(self.api, full_url)

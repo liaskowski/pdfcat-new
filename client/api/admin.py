@@ -3,15 +3,13 @@ import requests
 from .base import APIBase, APIError
 from .schemas import APIUser
 
-from .config import config
-
 class AdminAPI(APIBase):
     def create_user(self, username: str, password: Optional[str] = None, email: Optional[str] = None, role: str = "user") -> dict[str, Any]:
         """Создание нового пользователя (Admin only)."""
         if not self._token:
             raise RuntimeError("JWT token is not set")
 
-        url = config.get_url("/users")
+        url = f"{self.base_url}/users"
         data = {"username": username, "role": role}
         if password:
             data["password"] = password
@@ -31,7 +29,7 @@ class AdminAPI(APIBase):
         if not self._token:
             raise RuntimeError("JWT token is not set")
         
-        url = config.get_url("/users/public")
+        url = f"{self.base_url}/users/public"
         resp = self._session.get(url, timeout=self._timeout)
         if resp.status_code != 200:
             raise APIError(resp.status_code, "Failed to get public users", resp.text)
@@ -41,7 +39,7 @@ class AdminAPI(APIBase):
         if not self._token:
             raise RuntimeError("JWT token is not set")
         
-        url = config.get_url("/users/")
+        url = f"{self.base_url}/users/"
         resp = self._session.get(url, timeout=self._timeout)
         if resp.status_code != 200:
             raise APIError(resp.status_code, "Failed to get users", resp.text)
@@ -51,7 +49,7 @@ class AdminAPI(APIBase):
         if not self._token:
             raise RuntimeError("JWT token is not set")
         
-        url = config.get_url(f"/admin/users/{user_id}")
+        url = f"{self.base_url}/admin/users/{user_id}"
         resp = self._session.delete(url, timeout=self._timeout)
         if resp.status_code not in [200, 204]:
              raise APIError(resp.status_code, "Failed to delete user", resp.text)

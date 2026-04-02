@@ -2,11 +2,10 @@ from typing import Any, Optional
 import requests
 from pathlib import Path
 from .base import APIBase, APIError
-from .config import config
 
 class AuthAPI(APIBase):
     def login(self, username: str, password: str, email: Optional[str] = None) -> str:
-        url = config.get_url("/auth/token")
+        url = f"{self.base_url}/auth/token"
         data = {"username": username, "password": password}
         if email:
             data["email"] = email
@@ -28,14 +27,14 @@ class AuthAPI(APIBase):
         return self._token
 
     def forgot_password(self, email: str) -> dict[str, Any]:
-        url = config.get_url("/auth/forgot-password")
+        url = f"{self.base_url}/auth/forgot-password"
         resp = self._session.post(url, data={"email": email}, timeout=self._timeout)
         if resp.status_code != 200:
             raise APIError(resp.status_code, "Failed to request reset code", resp.text)
         return resp.json()
 
     def reset_password(self, email: str, code: str, new_password: str) -> dict[str, Any]:
-        url = config.get_url("/auth/reset-password")
+        url = f"{self.base_url}/auth/reset-password"
         data = {"email": email, "code": code, "new_password": new_password}
         resp = self._session.post(url, data=data, timeout=self._timeout)
         if resp.status_code != 200:
@@ -46,7 +45,7 @@ class AuthAPI(APIBase):
         if not self._token:
             raise RuntimeError("JWT token is not set")
 
-        url = config.get_url("/users/me")
+        url = f"{self.base_url}/users/me"
         resp = self._session.get(url, timeout=self._timeout)
         if resp.status_code != 200:
             raise APIError(resp.status_code, "Get current user failed", resp.text)
@@ -63,7 +62,7 @@ class AuthAPI(APIBase):
         if not self._token:
             raise RuntimeError("JWT token is not set")
 
-        url = config.get_url("/users/me")
+        url = f"{self.base_url}/users/me"
         payload = {}
         if is_public_profile is not None:
             payload["is_public_profile"] = is_public_profile
@@ -89,7 +88,7 @@ class AuthAPI(APIBase):
         if not self._token:
             raise RuntimeError("JWT token is not set")
             
-        url = config.get_url("/users/me/avatar")
+        url = f"{self.base_url}/users/me/avatar"
         
         with open(file_path, "rb") as f:
             filename = Path(file_path).name

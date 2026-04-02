@@ -22,6 +22,7 @@ class ServerStatusWorker(QThread):
     def __init__(self, api_manager):
         super().__init__()
         self.api = api_manager
+        self.base_url = api_manager.base_url if hasattr(api_manager, 'base_url') else None
         # Store login credentials for later use
         self.username = None
         self.password = None
@@ -29,10 +30,12 @@ class ServerStatusWorker(QThread):
     
     def run(self):
         """Check server status in background."""
+        if not self.base_url:
+            self.error.emit("No base URL provided for health check")
+            return
+            
         try:
-            # Use session-based approach instead of direct requests
-            from ..api.config import config
-            url = config.get_url("/health")
+            url = f"{self.base_url}/health"
             
             # Create a simple session for health check
             import requests
@@ -58,8 +61,9 @@ class ServerStatusMonitor(QObject):
     server_started = pyqtSignal()
     server_stopped = pyqtSignal()
     
-    def __init__(self, parent=None):
+    def __init__(self, base_url: str = "http://127.0.0.1:8000", parent=None):
         super().__init__(parent)
+        self.base_url = base_url.rstrip('/')
         self.server_process: Optional[subprocess.Popen] = None
         self.is_server_running = False
         self.check_timer = QTimer()
@@ -72,7 +76,7 @@ class ServerStatusMonitor(QObject):
     def _check_server_status(self):
         """Check if server is running."""
         try:
-            url = config.get_url("/health")
+            url = f"{self.base_url}/health"
             resp = requests.get(url, timeout=3)
             if resp.status_code == 200:
                 if not self.is_server_running:
