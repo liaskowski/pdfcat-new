@@ -171,6 +171,12 @@ class MainController:
         # Drag and Drop
         self.view.drop_event_requested.connect(self.handle_drop)
         
+        # Auto-refresh timer (Sync)
+        from PyQt6.QtCore import QTimer
+        self.refresh_timer = QTimer(self.view)
+        self.refresh_timer.timeout.connect(self._auto_refresh)
+        self.refresh_timer.start(10000) # Every 10 seconds
+        
         # Title Bar Signals
         self.ui.title_bar.minimize_clicked.connect(self.view.showMinimized)
         self.ui.title_bar.maximize_restore_clicked.connect(self._toggle_maximize)
@@ -285,36 +291,56 @@ class MainController:
         if not self._clipboard["doc_id"]:
             return
 
+        # Get target folder from nav tree
         selected_items = self.ui.nav_tree.selectedItems()
         target_folder_id = None
         if selected_items:
+            # item.data(0, ...) holds the folder object or None
             data = selected_items[0].data(0, Qt.ItemDataRole.UserRole)
             if isinstance(data, APIFolder):
                 target_folder_id = data.id
+            else:
+                # Might be a virtual node like "My Files" or "Public"
+                # Check if it's in a view mode that implies a folder
+                pass
 
         try:
-            if self._clipboard["action"] == "cut":
+            action = self._clipboard["action"]
+            doc_id = self._clipboard["doc_id"]
+            
+            logger.info(f"Pasting document {doc_id} (action: {action}) into folder {target_folder_id}")
+            
+            if action == "cut":
                 self.api.update_document(
-                    document_id=self._clipboard["doc_id"],
-                    title=None,
-                    category_id=None,
-                    file_type_id=None,
-                    is_private=None,
-                    is_public=None,
-                    is_public_edit=None,
-                    notes=None,
+                    document_id=doc_id,
                     folder_id=target_folder_id
                 )
                 self.view.statusBar().showMessage(self.translator.tr("main.moved_success"), 3000)
             else:
-                self.api.duplicate_document(self._clipboard["doc_id"], target_folder_id)
+                self.api.duplicate_document(doc_id, target_folder_id)
                 self.view.statusBar().showMessage(self.translator.tr("main.copied_success"), 3000)
             
+            # Clear clipboard and refresh UI
             self._clipboard = {"doc_id": None, "action": None}
             self.ui.file_grid.set_clipboard_state(None)
             self.search_handler.fetch_from_server()
+            
         except Exception as e:
+            logger.error(f"Paste Failed: {e}")
             self._show_error(self.translator.tr("common.error"), f"Paste Failed: {e}")
+
+    def _auto_refresh(self):
+        """Periodically refresh the current view to show changes from other users."""
+        if not self._me:
+            return
+            
+        # Only refresh if the window is active and no dialog is open
+        if not self.view.isActiveWindow():
+            return
+            
+        # Refresh current folder/search view silently (no loading shimmer)
+        logger.debug("Auto-refreshing current view...")
+        self.search_handler.fetch_from_server(load_all=False)
 
     def _ensure_authenticated_or_exit(self) -> None:
         if not self._ensure_authenticated():

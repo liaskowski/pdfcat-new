@@ -200,6 +200,9 @@ class ServerSelectionDialog(QDialog):
             self.discovery_worker.start()
             self.scan_btn.clicked.disconnect()
             self.scan_btn.clicked.connect(self.stop_scan)
+            
+            # Auto-stop after 10 seconds to save resources
+            QTimer.singleShot(10000, self.stop_scan)
         else:
             self.discovery_worker.scan()
 

@@ -449,49 +449,69 @@ class FileGrid(QFrame):
         
         return False
 
-        def get_sort_key(item_data):
-            doc = item_data['doc']
+    def sort_items(self, mode: str):
+        """Sort documents by name or date and rebuild the grid."""
+        if not self._all_files:
+            return
+
+        # 1. Store current selection ID to restore it later
+        current_id = None
+        current_item = self.files_list.currentItem()
+        if current_item:
+            data = current_item.data(Qt.ItemDataRole.UserRole)
+            if isinstance(data, APIDocument):
+                current_id = data.id
+
+        # 2. Define sort keys
+        def sort_key(doc: APIDocument):
             if mode == 'name_asc':
-                return doc.title.lower()
-            return doc.upload_date or ""
+                return (doc.title or "").lower()
+            elif mode == 'date_desc':
+                return doc.upload_date or ""
+            return doc.id
 
+        # 3. Sort the master list
         reverse = (mode == 'date_desc')
-        items_data.sort(key=get_sort_key, reverse=reverse)
+        self._all_files.sort(key=sort_key, reverse=reverse)
 
-        # Clear and rebuild in batches
+        # 4. Save current icon placeholder (we'll need it for rebuild)
+        # Note: We don't have easy access to placeholder_icon here, 
+        # so we'll reuse icons from current items or a generic one
+        from PyQt6.QtGui import QPixmap
+        pix = QPixmap(64, 64)
+        pix.fill(Qt.GlobalColor.transparent)
+        generic_placeholder = QIcon(pix)
+
+        # 5. Clear and rebuild grid items (without clearing _all_files!)
+        self.thread_pool.clear()
         self.files_list.clear()
-        self._sorted_items_data = items_data
-        self._sort_batch_index = 0
-        
-        from PyQt6.QtCore import QTimer
-        self._sort_timer = QTimer()
-        self._sort_timer.timeout.connect(self._add_sort_batch)
-        self._sort_timer.start(0)  # Immediate execution
-    
-    def _add_sort_batch(self):
-        """Add sorted items in batches to avoid UI blocking."""
-        batch_size = 50
-        start_idx = self._sort_batch_index
-        end_idx = min(start_idx + batch_size, len(self._sorted_items_data))
-        
-        for i in range(start_idx, end_idx):
-            item_data = self._sorted_items_data[i]
-            item = QListWidgetItem(item_data['icon'], item_data['text'])
-            item.setData(Qt.ItemDataRole.UserRole, item_data['doc'])
+        self._loaded_count = 0
+        self._loading_thumbnails.clear()
+
+        for f in self._all_files:
+            # Check if we have it in icon cache
+            icon = self._thumbnail_cache.get(f.id, generic_placeholder)
+            
+            # Add indicator if public
+            if f.is_public and f.id not in self._thumbnail_cache:
+                 # It's a placeholder, add dot
+                 pass # Indicator will be added when thumbnail is ready
+
+            item = QListWidgetItem(icon, f.title)
+            item.setData(Qt.ItemDataRole.UserRole, f)
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             item.setSizeHint(self.files_list.gridSize())
             self.files_list.addItem(item)
-        
-        self._sort_batch_index = end_idx
-        
-        # Check if done
-        if self._sort_batch_index >= len(self._sorted_items_data):
-            self._sort_timer.stop()
-            self._sorted_items_data = []
-            
-            # Restore selection
-            if self.files_list.count() > 0:
-                self.files_list.setCurrentRow(0)
+
+        # 6. Trigger thumbnail loading for new visible positions
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(0, self._load_more_files)
+
+        # 7. Restore selection
+        if current_id:
+            self.find_and_select_document(current_id)
+        elif self.files_list.count() > 0:
+            self.files_list.setCurrentRow(0)
 
     def _load_thumbnail_cache(self):
         """Load thumbnail cache from disk on startup"""
