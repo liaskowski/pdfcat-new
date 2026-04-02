@@ -57,16 +57,20 @@ class PdfRenderWorker(QThread):
                 return
 
             page = doc.load_page(self.page_num)
-            
+
             # Apply rotation
             page.set_rotation(self.rotation)
-            
+
             mat = fitz.Matrix(self.zoom, self.zoom)
-            
+
             pix = page.get_pixmap(matrix=mat, annots=True)
             doc.close()
+            del doc
+            import gc
+            gc.collect()
 
-            # Save to temp file to load into QPixmap (safest way across threads/contexts)
+            # Save to temp file
+ to load into QPixmap (safest way across threads/contexts)
             # Alternatively, we could load from bytes, but temp file is robust.
             fd, tmp_path = tempfile.mkstemp(suffix=".png")
             os.close(fd)
@@ -419,10 +423,14 @@ class IndexingWorker(QThread):
         self._stop = True
 
     def run(self):
+        import gc
+        processed_count = 0
+        
         for doc in self.documents:
             if self._stop: break
             
             # Skip if already in cache and has content
+            # We use a mutex if search_handler has one, but simple check is okay for skip
             cached = self.search_handler._cache.get(doc.id)
             if cached and cached.get("content"):
                 continue
@@ -430,24 +438,37 @@ class IndexingWorker(QThread):
             try:
                 # Download doc
                 content = self.api.download_document(doc.id)
-                fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
-                os.close(fd)
-                Path(tmp_path).write_bytes(content)
-
-                # Index doc
-                text = self.search_handler.index_document_content(doc.id, tmp_path, password=doc.encryption_key)
-                self.document_indexed.emit(doc.id, text)
-
-                # Clean up
-                try: os.remove(tmp_path)
-                except: pass
                 
-                # Be nice to the CPU/Network
-                time.sleep(0.5)
+                # Use a unique temp file name to avoid collisions
+                fd, tmp_path = tempfile.mkstemp(suffix=f"_idx_{doc.id}.pdf")
+                os.close(fd)
+                try:
+                    Path(tmp_path).write_bytes(content)
+
+                    # Index doc
+                    text = self.search_handler.index_document_content(doc.id, tmp_path, password=doc.encryption_key)
+                    if text:
+                        self.document_indexed.emit(doc.id, text)
+                finally:
+                    # Clean up temp file immediately
+                    if os.path.exists(tmp_path):
+                        try: os.remove(tmp_path)
+                        except: pass
+
+                processed_count += 1
+                
+                # CRITICAL: Every 5 documents, force garbage collection
+                if processed_count % 5 == 0:
+                    gc.collect()
+                
+                # Be nice to the CPU/Network - wait longer between files
+                time.sleep(1.0)
+                
             except Exception as e:
                 print(f"IndexingWorker Error for doc {doc.id}: {e}")
 
         self.finished.emit()
+        gc.collect()
 
 class OCRSearchWorker(QThread):
     """

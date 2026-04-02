@@ -182,11 +182,29 @@ class SearchHandler:
         self.ui.file_grid.rebuild_with_files(documents, pdf_icon)
     
     def start_indexing(self, documents):
-        """Start background indexing of all documents."""
+        """Start background indexing of documents with safeguards."""
         if not documents:
             return
 
-        self._indexing_worker = IndexingWorker(self.api, self, documents)
+        # 1. Stop existing worker if running
+        if self._indexing_worker and self._indexing_worker.isRunning():
+            self._indexing_worker.stop()
+            self._indexing_worker.wait(500) # Give it 0.5s to stop gracefully
+
+        # 2. Filter out already cached documents locally before starting thread
+        # to prevent even spawning the thread if nothing to do
+        to_index = []
+        with QMutexLocker(self._cache_mutex):
+            for d in documents:
+                cached = self._cache.get(d.id)
+                if not cached or not cached.get("content"):
+                    to_index.append(d)
+        
+        if not to_index:
+            return
+
+        # 3. Start new worker with filtered list
+        self._indexing_worker = IndexingWorker(self.api, self, to_index)
         self._indexing_worker.start()
 
     def load_filter_combos(self):

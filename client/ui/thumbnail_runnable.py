@@ -19,15 +19,16 @@ class ThumbnailRunnable(QRunnable):
         self.signals = self.Signals()
 
     def run(self):
+        import gc
+        import time
         # Check if API has authentication token
         if not self.api.token:
-            print(f"ThumbnailRunnable: No authentication token for doc {self.doc_id}, skipping")
             return
             
         from ..utils.cache_manager import CacheManager
         cache = CacheManager()
 
-        # Fetch preview from server (always fresh to avoid stale cache)
+        # Fetch preview from server
         try:
             png_bytes = self.api.get_preview_png(self.doc_id)
             img = QImage()
@@ -41,12 +42,14 @@ class ThumbnailRunnable(QRunnable):
                     Qt.TransformationMode.SmoothTransformation
                 )
                 
-                # Save to cache for next time
+                # Save to cache
                 cache.save_thumbnail(self.doc_id, scaled)
                 
                 self.signals.finished.emit(self.doc_id, scaled)
+                
+                # Be nice to memory and UI thread
+                gc.collect()
+                time.sleep(0.1) # Small gap between requests
         except Exception as e:
-            # Suppress 404 errors - document may have been deleted
-            error_msg = str(e)
-            if "404" not in error_msg and "Not Found" not in error_msg:
-                print(f"ThumbnailRunnable error for doc {self.doc_id}: {e}")
+            # Suppress common network/not-found errors
+            pass
