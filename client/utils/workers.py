@@ -69,8 +69,7 @@ class PdfRenderWorker(QThread):
             import gc
             gc.collect()
 
-            # Save to temp file
- to load into QPixmap (safest way across threads/contexts)
+            # Save to temp file to load into QPixmap (safest way across threads/contexts)
             # Alternatively, we could load from bytes, but temp file is robust.
             fd, tmp_path = tempfile.mkstemp(suffix=".png")
             os.close(fd)
