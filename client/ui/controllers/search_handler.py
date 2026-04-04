@@ -201,6 +201,10 @@ class SearchHandler:
     
     def _update_grid_with_docs(self, documents):
         """Update file grid with documents (non-blocking)."""
+        # Skip rebuild if document set hasn't changed (prevents sort/filter reset on auto-refresh)
+        if self.ui.file_grid.has_same_documents(documents):
+            return
+
         # Ensure UI icon is handled
         pdf_icon = self.view._make_pdf_icon(64) if hasattr(self.view, '_make_pdf_icon') else None
 
