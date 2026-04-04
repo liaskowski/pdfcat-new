@@ -44,18 +44,28 @@ class DocumentService:
     ) -> List[Document]:
         query = self.db.query(Document)
 
-        if view_mode == "my":
+        if view_mode == "community":
+            # PUBLIC VIEW: Strictly only public docs, AND strictly NOT private docs
+            # Even if the current user owns them, they shouldn't appear here if private
+            query = query.filter(
+                or_(Document.is_public == True, Document.is_public_edit == True),
+                Document.is_private == False
+            )
+            if folder_id is not None:
+                query = query.filter(Document.folder_id == folder_id)
+        
+        elif view_mode == "my":
+            # PRIVATE VIEW: Only my docs
             query = query.filter(Document.owner_id == user.id)
             if folder_id is not None:
                 query = query.filter(Document.folder_id == folder_id)
+        
+        else:
+            # DEFAULT SAFETY: If mode is unknown, default to user's own docs
+            query = query.filter(Document.owner_id == user.id)
 
-        elif view_mode == "community":
-             # Community view MUST only show public documents
-             query = query.filter(or_(Document.is_public == True, Document.is_public_edit == True))
-             if folder_id is not None:
-                 query = query.filter(Document.folder_id == folder_id)
-
-        if owner_id and view_mode != "my":
+        # Additional filter by owner if requested (e.g. admin browsing)
+        if owner_id and user.role == "admin":
              query = query.filter(Document.owner_id == owner_id)
 
         return query.order_by(desc(Document.upload_date)).offset(skip).limit(limit).all()

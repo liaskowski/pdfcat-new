@@ -59,6 +59,13 @@ class SearchHandler:
 
     def fetch_from_server(self, view_mode=None, folder_id=None, owner_id=None, load_all=True) -> None:
         """Schedule fetch with debouncing to avoid rapid re-fetches."""
+        # 1. If view mode changed, clear folder cache to ensure strict privacy
+        if self._pending_fetch_params:
+            old_mode = self._pending_fetch_params[0]
+            if old_mode != view_mode:
+                with QMutexLocker(self._folder_cache_mutex):
+                    self._folder_cache.clear()
+
         # Store parameters for debounced execution
         self._pending_fetch_params = (view_mode, folder_id, owner_id, load_all)
         
