@@ -135,6 +135,7 @@ class SearchHandler:
 
     def _on_search_finished(self, documents, query, cache_key=None, view_mode=None):
         query_lower = query.lower() if query else ""
+        print(f"🔍 DEBUG: Client received {len(documents)} docs from server for mode={view_mode}")
 
         # Thread-safe cache update
         with QMutexLocker(self._cache_mutex):
@@ -155,8 +156,13 @@ class SearchHandler:
             # SAFETY FILTER: Client-side privacy enforcement
             # If we are in 'community' mode, NEVER show private docs
             if view_mode == "community":
-                if not (d.is_public or d.is_public_edit):
+                if d.is_private:
+                    print(f"   - Rejected doc {d.id} ('{d.title}'): is_private is True")
                     continue
+                if not (d.is_public or d.is_public_edit):
+                    print(f"   - Rejected doc {d.id} ('{d.title}'): is_public is False")
+                    continue
+            
             # If we are in 'my' mode, only show my docs (unless admin)
             elif view_mode == "my":
                 if d.owner_id != self.controller._me_id and self.controller._me.get("role") != "admin":
@@ -174,6 +180,8 @@ class SearchHandler:
                     continue
 
             filtered.append(d)
+
+        print(f"🔍 DEBUG: Client filtered list contains {len(filtered)} docs")
 
         # Cache the filtered results for instant switching
         if cache_key:
