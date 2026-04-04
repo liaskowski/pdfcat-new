@@ -50,15 +50,15 @@ class DocumentService:
                 query = query.filter(Document.folder_id == folder_id)
 
         elif view_mode == "community":
+             # Community view MUST only show public documents
              query = query.filter(or_(Document.is_public == True, Document.is_public_edit == True))
+             if folder_id is not None:
+                 query = query.filter(Document.folder_id == folder_id)
 
-        if owner_id:
+        if owner_id and view_mode != "my":
              query = query.filter(Document.owner_id == owner_id)
-             
-        if folder_id is not None and view_mode != "my":
-             query = query.filter(Document.folder_id == folder_id)
 
-        return query.offset(skip).limit(limit).all()
+        return query.order_by(desc(Document.upload_date)).offset(skip).limit(limit).all()
 
     def search(self, user: User, query_str: str, limit: int = 100) -> List[Document]:
         return self.search_service.search_documents(user, query_str, limit)

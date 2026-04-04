@@ -89,26 +89,29 @@ class SearchHandler:
                 temp_item = temp_item.parent()
             self.ui.breadcrumbs.setText(" > ".join(path_segments))
         
-        # Check cache first (only for non-search queries)
+        # Check cache first (only for non-search queries and when NOT loading all)
+        # IF load_all is True, we want FRESH data from server (used by auto-refresh)
         cache_key = f"{view_mode}_{folder_id}_{owner_id}"
-        
+        query = self.ui.search_bar.text()
+
         with QMutexLocker(self._folder_cache_mutex):
-            if cache_key in self._folder_cache and not load_all:
+            # If we're NOT searching and NOT forcing a full reload (auto-refresh), use cache
+            if not query and cache_key in self._folder_cache and not load_all:
                 # Use cached data - instant response!
                 cached_docs = self._folder_cache[cache_key]
                 self._update_grid_with_docs(cached_docs)
                 return
         
-        # Not in cache - fetch from server
-        query = self.ui.search_bar.text()
+        # Not in cache or refresh requested - fetch from server
         
         # Stop any pending search
         if hasattr(self, '_search_worker') and self._search_worker.isRunning():
             self._search_worker.terminate()
             self._search_worker.wait()
 
-        # Show loading in status bar (non-blocking)
-        self.view.statusBar().showMessage("Loading folder contents...", 2000)
+        # Show loading only for manual triggers, not for background sync
+        if not hasattr(self.controller, 'refresh_timer') or not self.controller.refresh_timer.isActive():
+             self.view.statusBar().showMessage("Loading folder contents...", 2000)
 
         from ...utils.workers import SearchWorker
         self._search_worker = SearchWorker(
@@ -117,13 +120,13 @@ class SearchHandler:
             view_mode, 
             folder_id, 
             owner_id,
-            load_all=load_all  # Load all files with pagination
+            load_all=True # Always load all when fetching from server to ensure sync
         )
-        self._search_worker.finished.connect(lambda docs: self._on_search_finished(docs, query, cache_key))
+        self._search_worker.finished.connect(lambda docs: self._on_search_finished(docs, query, cache_key, view_mode))
         self._search_worker.error.connect(lambda e: self.controller._show_error(self.controller.translator.tr("common.error"), str(e)))
         self._search_worker.start()
 
-    def _on_search_finished(self, documents, query, cache_key=None):
+    def _on_search_finished(self, documents, query, cache_key=None, view_mode=None):
         query_lower = query.lower() if query else ""
 
         # Thread-safe cache update
@@ -142,8 +145,15 @@ class SearchHandler:
 
         filtered = []
         for d in documents:
-            # Server already searched by content/title, so we only apply category/file_type filters
-            # Skip client-side content filtering to avoid losing results when cache is empty
+            # SAFETY FILTER: Client-side privacy enforcement
+            # If we are in 'community' mode, NEVER show private docs
+            if view_mode == "community":
+                if not (d.is_public or d.is_public_edit):
+                    continue
+            # If we are in 'my' mode, only show my docs (unless admin)
+            elif view_mode == "my":
+                if d.owner_id != self.controller._me_id and self.controller._me.get("role") != "admin":
+                    continue
 
             if category_id is not None and (not d.category or d.category.id != category_id):
                 continue
