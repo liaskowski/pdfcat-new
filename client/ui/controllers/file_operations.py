@@ -639,6 +639,9 @@ class FileOperations:
                 if isinstance(data, APIFolder):
                     target_folder_id = data.id
                     is_public = data.is_public
+                elif data == "Shared Documents":
+                    target_folder_id = None
+                    is_public = True
 
             log_debug("file_operations", f"Starting upload worker with {len(paths)} files")
             # Start upload in background using QTimer

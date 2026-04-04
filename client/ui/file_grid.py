@@ -264,23 +264,31 @@ class FileGrid(QFrame):
         Rebuild grid with files using TRUE lazy loading.
         Shows all files immediately, loads thumbnails only for visible items.
         """
-        # Cancel all pending thumbnail workers
+        # 1. Stop pending workers and reset state
         self.thread_pool.clear()
-        
         self.set_loading(False)
         self.files_list.clear()
-        self._thumbnail_cache.clear()
+        
+        # We DON'T clear self._thumbnail_cache here to reuse icons for files that didn't change
+        # Only clear it if the document set is fundamentally different or forced
+        
+        # 2. Store ALL files - grid will show them all
+        self._all_files = list(files) # Create a copy to be safe
+        self._loaded_count = 0
         self._loading_thumbnails.clear()
         
-        # Store ALL files - grid will show them all
-        self._all_files = files
-        self._loaded_count = 0
-        
-        # Add ALL items to grid immediately (with placeholder icons)
-        for f in files:
-            icon = placeholder_icon
-            if f.is_public:
-                icon = self._add_public_indicator(placeholder_icon.pixmap(self.files_list.iconSize()))
+        if not files:
+            self.file_selected.emit(None)
+            return
+
+        # 3. Add ALL items to grid immediately (with placeholder or cached icons)
+        for f in self._all_files:
+            # Check if we have it in icon cache
+            icon = self._thumbnail_cache.get(f.id)
+            if not icon:
+                icon = placeholder_icon
+                if f.is_public:
+                    icon = self._add_public_indicator(placeholder_icon.pixmap(self.files_list.iconSize()))
 
             item = QListWidgetItem(icon, f.title)
             item.setData(Qt.ItemDataRole.UserRole, f)
@@ -288,21 +296,15 @@ class FileGrid(QFrame):
             item.setSizeHint(self.files_list.gridSize())
             self.files_list.addItem(item)
 
-        # Force layout update so viewport height is correct
-        self.files_list.updateGeometry()
-        self.files_list.viewport().update()
+        # 4. Force layout update
+        self.files_list.update()
         
-        # Load thumbnails for visible items IMMEDIATELY (no delay)
+        # 5. Start loading thumbnails for visible part
         from PyQt6.QtCore import QTimer
-        QTimer.singleShot(0, self._load_more_files)
-        
-        # Also trigger after short delay to catch any layout changes
-        QTimer.singleShot(200, self._load_more_files)
+        QTimer.singleShot(50, self._load_more_files)
 
         if self.files_list.count() > 0:
             self.files_list.setCurrentRow(0)
-        else:
-            self.file_selected.emit(None)
 
     def _on_thumbnail_ready(self, doc_id: int, image):
         """Handle thumbnail ready signal with proper error handling."""

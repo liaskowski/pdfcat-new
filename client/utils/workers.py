@@ -239,6 +239,8 @@ class UploadWorker(QThread):
                         use_ocr=True, # Default to True
                         is_private=not self.is_public,
                         is_public=self.is_public,
+                        is_public_edit=False,
+                        is_read_only=False,
                         folder_id=pid,
                         encryption_key=encryption_key,
                         tags=tags_str,  # Add auto-generated tags
@@ -456,10 +458,6 @@ class IndexingWorker(QThread):
 
                 processed_count += 1
                 
-                # CRITICAL: Every 5 documents, force garbage collection
-                if processed_count % 5 == 0:
-                    gc.collect()
-                
                 # Be nice to the CPU/Network - wait longer between files
                 time.sleep(1.0)
                 
@@ -467,7 +465,6 @@ class IndexingWorker(QThread):
                 print(f"IndexingWorker Error for doc {doc.id}: {e}")
 
         self.finished.emit()
-        gc.collect()
 
 class OCRSearchWorker(QThread):
     """
