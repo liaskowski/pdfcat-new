@@ -33,7 +33,7 @@ class TreeRefreshWorker(QThread):
 
             # Fetch file counts (with max allowed limit)
             my_docs_count = len(self.api.list_documents(folder_id=None, view_mode="my", limit=500))
-            shared_count = len(self.api.list_documents(folder_id=None, view_mode="shared", limit=500))
+            shared_count = len(self.api.list_documents(folder_id=None, view_mode="community", limit=500))
 
             self.finished.emit((my_folders, global_folders, my_docs_count, shared_count))
         except Exception as e:
@@ -175,7 +175,7 @@ class NavigationTree(QTreeWidget):
                 temp_item = temp_item.parent()
 
             if data == "Shared Documents":
-                view_mode = "shared"
+                view_mode = "community"
             elif data == "Users":
                 view_mode = "community"
             elif isinstance(data, APIUser):

@@ -30,6 +30,7 @@ class SearchHandler:
         self._debounce_timer.setInterval(150)  # 150ms debounce
         self._debounce_timer.timeout.connect(self._execute_fetch)
         self._pending_fetch_params = None
+        self.current_view_params = ("my", None, None) # (view_mode, folder_id, owner_id)
 
         # Load persistent document cache
         self._load_cache()
@@ -59,6 +60,9 @@ class SearchHandler:
 
     def fetch_from_server(self, view_mode=None, folder_id=None, owner_id=None, load_all=True) -> None:
         """Schedule fetch with debouncing to avoid rapid re-fetches."""
+        # Update current view params for auto-refresh
+        self.current_view_params = (view_mode, folder_id, owner_id)
+
         # 1. If view mode changed, clear folder cache to ensure strict privacy
         if self._pending_fetch_params:
             old_mode = self._pending_fetch_params[0]

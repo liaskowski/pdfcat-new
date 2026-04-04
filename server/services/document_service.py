@@ -45,9 +45,9 @@ class DocumentService:
         logger.info(f"🔍 DEBUG: list_documents | user={user.username} (id={user.id}) | mode={view_mode} | folder={folder_id}")
         query = self.db.query(Document)
 
-        if view_mode == "community":
+        if view_mode in ["community", "shared"]:
             # PUBLIC VIEW: Strictly only public docs, AND strictly NOT private docs
-            logger.info("🔍 DEBUG: Applying COMMUNITY filters (is_public=True AND is_private=False)")
+            logger.info(f"🔍 DEBUG: Applying PUBLIC filters (mode={view_mode}) (is_public=True AND is_private=False)")
             query = query.filter(
                 or_(Document.is_public == True, Document.is_public_edit == True),
                 Document.is_private == False

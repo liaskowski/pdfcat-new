@@ -340,7 +340,8 @@ class MainController:
             
         # Refresh current folder/search view silently (no loading shimmer)
         logger.debug("Auto-refreshing current view...")
-        self.search_handler.fetch_from_server(load_all=False)
+        mode, fid, oid = self.search_handler.current_view_params
+        self.search_handler.fetch_from_server(view_mode=mode, folder_id=fid, owner_id=oid, load_all=False)
 
     def _ensure_authenticated_or_exit(self) -> None:
         if not self._ensure_authenticated():
