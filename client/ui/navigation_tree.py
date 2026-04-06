@@ -106,7 +106,7 @@ class NavigationTree(QTreeWidget):
 
         # Cache for icons
         self._icon_cache = {}
-        
+
         # Debounce for rapid expansion
         from PyQt6.QtCore import QTimer
         self._expand_debounce_timer = QTimer()
@@ -115,6 +115,11 @@ class NavigationTree(QTreeWidget):
         self._expand_debounce_timer.timeout.connect(self._execute_expand)
         self._pending_expand_item = None
         self._pending_expand_data = None
+    
+    def force_refresh(self):
+        """Force a complete refresh of the navigation tree."""
+        self.refresh()
+        self.folder_changed.emit()
 
     def _get_folder_icon(self, is_public: bool) -> QIcon:
         key = "public" if is_public else "private"
@@ -379,6 +384,8 @@ class NavigationTree(QTreeWidget):
                 if data.name != new_name:
                     updated_folder = self.api.update_folder(data.id, name=new_name)
                     item.setData(column, Qt.ItemDataRole.UserRole, updated_folder)
+                    # Trigger refresh to sync the rename across all clients
+                    self.force_refresh()
         except Exception as e:
             QMessageBox.critical(self, self.translator.tr("context_menu.rename"), str(e))
             item.setText(column, data.name if hasattr(data, 'name') else "")
@@ -414,8 +421,7 @@ class NavigationTree(QTreeWidget):
         if ok and name:
             try:
                 self.api.create_folder(name, parent_id=None, is_public=True)
-                self.refresh()
-                self.folder_changed.emit()
+                self.force_refresh()
             except Exception as e:
                 QMessageBox.critical(self, self.translator.tr("common.error"), str(e))
 
@@ -437,16 +443,14 @@ class NavigationTree(QTreeWidget):
         if reply == QMessageBox.StandardButton.Yes:
             try:
                 self.api.delete_folder(data.id)
-                self.refresh()
-                self.folder_changed.emit()
+                self.force_refresh()
             except Exception as e:
                 QMessageBox.critical(self, self.translator.tr("common.error"), str(e))
 
     def _toggle_folder_public(self, folder: APIFolder):
         try:
             self.api.update_folder(folder.id, is_public=not folder.is_public)
-            self.refresh()
-            self.folder_changed.emit()
+            self.force_refresh()
         except Exception as e:
             QMessageBox.critical(self, self.translator.tr("common.error"), str(e))
 
@@ -463,7 +467,6 @@ class NavigationTree(QTreeWidget):
 
             try:
                 self.api.create_folder(name, parent_id, is_public)
-                self.refresh()
-                self.folder_changed.emit()
+                self.force_refresh()
             except Exception as e:
                 QMessageBox.critical(self, self.translator.tr("common.error"), str(e))

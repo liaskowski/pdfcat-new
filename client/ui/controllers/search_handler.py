@@ -1,4 +1,4 @@
-from typing import Optional, TYPE_CHECKING, Dict, Any
+from typing import Optional, TYPE_CHECKING, Dict, Any, List
 from PyQt6.QtCore import Qt, QStandardPaths, QMutex, QMutexLocker
 import fitz
 import json
@@ -58,12 +58,21 @@ class SearchHandler:
         self._cache[doc_id]["content"] = text
         return text
 
-    def fetch_from_server(self, view_mode=None, folder_id=None, owner_id=None, load_all=True) -> None:
-        """Schedule fetch with debouncing to avoid rapid re-fetches."""
+    def fetch_from_server(self, view_mode=None, folder_id=None, owner_id=None, load_all=True, force_fresh=False) -> None:
+        """Schedule fetch with debouncing to avoid rapid re-fetches.
+        
+        Args:
+            force_fresh: If True, bypass cache and fetch fresh data from server
+        """
+        # If force_fresh is True, clear the entire folder cache immediately
+        if force_fresh:
+            with QMutexLocker(self._folder_cache_mutex):
+                self._folder_cache.clear()
+        
         # Update current view params for auto-refresh
         self.current_view_params = (view_mode, folder_id, owner_id)
 
-        # 1. If view mode changed, clear folder cache to ensure strict privacy
+        # Also clear cache if view mode changed
         if self._pending_fetch_params:
             old_mode = self._pending_fetch_params[0]
             if old_mode != view_mode:
@@ -71,8 +80,12 @@ class SearchHandler:
                     self._folder_cache.clear()
 
         # Store parameters for debounced execution
+        # If force_fresh is True, set load_all=True to ensure fresh data fetch
+        if force_fresh:
+            load_all = True
+            
         self._pending_fetch_params = (view_mode, folder_id, owner_id, load_all)
-        
+
         # Restart debounce timer
         self._debounce_timer.start()
     
@@ -101,12 +114,13 @@ class SearchHandler:
             self.ui.breadcrumbs.setText(" > ".join(path_segments))
         
         # Check cache first (only for non-search queries and when NOT loading all)
-        # IF load_all is True, we want FRESH data from server (used by auto-refresh)
+        # NOTE: When force_fresh=True was passed to fetch_from_server(), it sets load_all=True,
+        # which makes 'not load_all' False, thus bypassing the cache and fetching fresh data
         cache_key = f"{view_mode}_{folder_id}_{owner_id}"
         query = self.ui.search_bar.text()
 
         with QMutexLocker(self._folder_cache_mutex):
-            # If we're NOT searching and NOT forcing a full reload (auto-refresh), use cache
+            # Use cache only if: no search query AND cache exists AND not forcing fresh reload
             if not query and cache_key in self._folder_cache and not load_all:
                 # Use cached data - instant response!
                 cached_docs = self._folder_cache[cache_key]

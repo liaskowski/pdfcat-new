@@ -362,6 +362,9 @@ class FileOperations:
             # Force UI refresh to ensure data sync
             from PyQt6.QtCore import QTimer
             QTimer.singleShot(100, lambda: self._force_ui_refresh())
+            
+            # Trigger immediate sync for better synchronization
+            self.controller._trigger_immediate_sync()
 
     def _force_ui_refresh(self):
         """Force refresh of UI components to ensure data sync."""
@@ -412,6 +415,8 @@ class FileOperations:
     def _on_delete_finished(self):
         self.controller.search_handler.fetch_from_server()
         self.controller.update_status(self.controller.translator.tr("common.success"))
+        # Trigger immediate sync for better synchronization
+        self.controller._trigger_immediate_sync()
 
     def on_open_file_clicked(self, doc_id: int, search_query: str = None):
         self.controller.update_status(self.controller.translator.tr("common.loading"), 0)
@@ -532,6 +537,8 @@ class FileOperations:
         self.controller.update_status(self.controller.translator.tr("common.success"))
         self.controller.search_handler.fetch_from_server()
         self.ui.nav_tree.refresh()
+        # Trigger immediate sync for better synchronization
+        self.controller._trigger_immediate_sync()
 
     def handle_drop(self, event, tree_pos):
         """Handle drag-and-drop events - non-blocking for large file sets."""
@@ -591,13 +598,15 @@ class FileOperations:
 
                 self.api.update_document(
                     document_id=doc.id,
-                    title=None,
-                    category_id=None,
-                    file_type_id=None,
-                    is_private=None,
+                    title=doc.title,
+                    category_id=doc.category.id if doc.category else None,
+                    file_type_id=doc.file_type.id if doc.file_type else None,
+                    is_private=doc.is_private,
                     is_public=new_is_public,
-                    is_public_edit=None,
-                    notes=None,
+                    is_public_edit=doc.is_public_edit,
+                    notes=doc.notes or "",
+                    is_read_only=doc.is_read_only,
+                    tags=doc.tags,
                     folder_id=target_folder_id
                 )
 
@@ -680,5 +689,8 @@ class FileOperations:
                 self.ui.file_grid.update_single_document(updated_doc)
                 self.ui.file_grid.find_and_select_document(updated_doc.id)
                 
+                # Trigger immediate sync for better synchronization
+                self.controller._trigger_immediate_sync()
+
             except Exception as e:
                 self.controller._show_error(self.controller.translator.tr("common.error"), str(e))

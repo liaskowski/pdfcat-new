@@ -171,11 +171,18 @@ class MainController:
         # Drag and Drop
         self.view.drop_event_requested.connect(self.handle_drop)
         
-        # Auto-refresh timer (Sync)
+        # Auto-refresh timer (Sync) - Start with 10 second interval
         from PyQt6.QtCore import QTimer
         self.refresh_timer = QTimer(self.view)
         self.refresh_timer.timeout.connect(self._auto_refresh)
         self.refresh_timer.start(10000) # Every 10 seconds
+        
+        # Track if recent change occurred for faster sync
+        self._recent_change_timer = QTimer(self.view)
+        self._recent_change_timer.setSingleShot(True)
+        self._recent_change_timer.setInterval(3000)  # 3 seconds of "recent change" state
+        self._recent_change_timer.timeout.connect(self._on_recent_change_expired)
+        self._has_recent_change = False
         
         # Title Bar Signals
         self.ui.title_bar.minimize_clicked.connect(self.view.showMinimized)
@@ -307,24 +314,38 @@ class MainController:
         try:
             action = self._clipboard["action"]
             doc_id = self._clipboard["doc_id"]
-            
+
             logger.info(f"Pasting document {doc_id} (action: {action}) into folder {target_folder_id}")
-            
+
             if action == "cut":
+                # Fetch document metadata to preserve all fields during update
+                doc = self.api.get_document(doc_id)
                 self.api.update_document(
                     document_id=doc_id,
+                    title=doc.title,
+                    category_id=doc.category.id if doc.category else None,
+                    file_type_id=doc.file_type.id if doc.file_type else None,
+                    is_private=doc.is_private,
+                    is_public=doc.is_public,
+                    is_public_edit=doc.is_public_edit,
+                    notes=doc.notes or "",
+                    is_read_only=doc.is_read_only,
+                    tags=doc.tags,
                     folder_id=target_folder_id
                 )
                 self.view.statusBar().showMessage(self.translator.tr("main.moved_success"), 3000)
             else:
                 self.api.duplicate_document(doc_id, target_folder_id)
                 self.view.statusBar().showMessage(self.translator.tr("main.copied_success"), 3000)
-            
+
             # Clear clipboard and refresh UI
             self._clipboard = {"doc_id": None, "action": None}
             self.ui.file_grid.set_clipboard_state(None)
-            self.search_handler.fetch_from_server()
             
+            # Trigger immediate sync for better synchronization
+            self._trigger_immediate_sync()
+            self.search_handler.fetch_from_server()
+
         except Exception as e:
             logger.error(f"Paste Failed: {e}")
             self._show_error(self.translator.tr("common.error"), f"Paste Failed: {e}")
@@ -333,15 +354,34 @@ class MainController:
         """Periodically refresh the current view to show changes from other users."""
         if not self._me:
             return
-            
+
         # Only refresh if the window is active and no dialog is open
         if not self.view.isActiveWindow():
             return
-            
+
         # Refresh current folder/search view silently (no loading shimmer)
         logger.debug("Auto-refreshing current view...")
         mode, fid, oid = self.search_handler.current_view_params
         self.search_handler.fetch_from_server(view_mode=mode, folder_id=fid, owner_id=oid, load_all=False)
+    
+    def _trigger_immediate_sync(self):
+        """Trigger an immediate synchronization with the server."""
+        logger.info("Triggering immediate sync due to recent changes...")
+        # Mark that a recent change occurred
+        self._has_recent_change = True
+        self._recent_change_timer.start()  # Reset the timer
+        
+        # Force refresh navigation tree to sync folder structure across clients
+        self.ui.nav_tree.force_refresh()
+        
+        # Force fresh fetch of current view (bypass cache)
+        mode, fid, oid = self.search_handler.current_view_params
+        self.search_handler.fetch_from_server(view_mode=mode, folder_id=fid, owner_id=oid, force_fresh=True)
+    
+    def _on_recent_change_expired(self):
+        """Called when the recent change timer expires."""
+        self._has_recent_change = False
+        logger.debug("Recent change state expired, returning to normal refresh interval")
 
     def _ensure_authenticated_or_exit(self) -> None:
         if not self._ensure_authenticated():
