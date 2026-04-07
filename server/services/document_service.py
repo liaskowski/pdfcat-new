@@ -301,20 +301,42 @@ class DocumentService:
         return new_doc
 
     def delete_document(self, document_id: int, user: User):
-        doc = self.get_document(document_id, user)
-        
-        if doc.owner_id != user.id and not user.role == "admin":
-             raise HTTPException(status_code=403, detail="Only owner can delete document")
+        try:
+            doc = self.get_document(document_id, user)
 
-        # Use Storage Service for deletion
-        if doc.file_path:
-            storage.delete(doc.file_path)
+            if doc.owner_id != user.id and not user.role == "admin":
+                raise HTTPException(status_code=403, detail="Only owner can delete document")
+
+            # Use Storage Service for deletion (handle missing files gracefully)
+            if doc.file_path:
+                try:
+                    storage.delete(doc.file_path)
+                except FileNotFoundError:
+                    logger.warning(f"File not found during deletion, continuing with doc deletion: {doc.file_path}")
+                except Exception as e:
+                    logger.error(f"Error deleting file {doc.file_path}: {e}")
+                    # Continue with document deletion even if file deletion fails
+
+            # Delete index
+            try:
+                self.db.query(DocumentIndex).filter(DocumentIndex.document_id == document_id).delete()
+            except Exception as e:
+                logger.error(f"Error deleting document index for document {document_id}: {e}")
+                # Continue with document deletion
+
+            # Delete the document itself
+            self.db.delete(doc)
+            self.db.commit()
             
-        # Delete index
-        self.db.query(DocumentIndex).filter(DocumentIndex.document_id == document_id).delete()
-
-        self.db.delete(doc)
-        self.db.commit()
+            logger.info(f"Document {document_id} deleted successfully by user {user.id}")
+            
+        except HTTPException:
+            # Re-raise HTTP exceptions
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error deleting document {document_id}: {e}")
+            self.db.rollback()
+            raise HTTPException(status_code=500, detail=f"Failed to delete document: {str(e)}")
 
     def save_history(self, doc: Document, user_id: int, change_type: str, new_value: str = "", old_value: str = "", field_changed: str = None):
         history = FileHistory(

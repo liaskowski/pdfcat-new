@@ -3,6 +3,7 @@ Thread pool and queue management utilities for handling concurrent operations.
 Provides rate limiting, progress tracking, and cancellation support.
 """
 
+import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed

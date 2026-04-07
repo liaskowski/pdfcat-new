@@ -197,7 +197,12 @@ class UploadDialog(QDialog):
             QMessageBox.warning(self, self.translator.tr("common.warning"), f"{self.translator.tr('upload.history_failed').format(err=str(e))}")
 
     def _on_update_content_clicked(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select New PDF", "", "PDF Files (*.pdf *.PDF)")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, 
+            self.translator.tr("upload.select_file"), 
+            "", 
+            self.translator.tr("upload.pdf_filter")
+        )
         if not file_path:
             return
         
@@ -225,7 +230,7 @@ class UploadDialog(QDialog):
             self.accept() # Close dialog to refresh everything
             
         except Exception as e:
-            QMessageBox.critical(self, self.translator.tr("common.error"), f"Failed: {e}")
+            QMessageBox.critical(self, self.translator.tr("common.error"), self.translator.tr("upload.update_failed").format(e))
             self.form.update_content_btn.setEnabled(True)
             self.form.update_content_btn.setText(self.translator.tr("upload.update_content"))
 
@@ -313,4 +318,4 @@ class UploadDialog(QDialog):
             self.save_btn.setEnabled(True)
             btn_text = self.translator.tr("common.save") if self.is_edit_mode else self.translator.tr("upload.title_upload")
             self.save_btn.setText(btn_text)
-            QMessageBox.critical(self, self.translator.tr("common.error"), f"Save failed: {e}")
+            QMessageBox.critical(self, self.translator.tr("common.error"), self.translator.tr("upload.save_failed").format(e))

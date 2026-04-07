@@ -15,28 +15,30 @@ from ...api_manager import APIManager, APIDocument, APICategory, APIFileType
 
 class DocumentMetadataForm(QWidget):
     def __init__(
-        self, 
+        self,
         api: APIManager,
         is_edit_mode: bool,
         is_public_default: bool,
         current_user_id: int | None,
         is_admin: bool,
-        parent=None
+        parent=None,
+        batch_mode: bool = False
     ):
         super().__init__(parent)
         self.api = api
         self.is_edit_mode = is_edit_mode
+        self.batch_mode = batch_mode
         self.translator = Translator()
         self.theme_manager = ThemeManager()
         self.tag_analyzer = TagAnalyzer()
-        
+
         self._categories: List[APICategory] = []
         self._file_types: List[APIFileType] = []
-        
+
         # Permissions context
         self.current_user_id = current_user_id
         self.is_admin = is_admin
-        
+
         self._init_ui(is_public_default)
         self._load_combos()
 
@@ -109,7 +111,11 @@ class DocumentMetadataForm(QWidget):
         self.is_public_checkbox = QCheckBox(self.translator.tr("upload.is_public"))
         self.is_public_checkbox.setChecked(is_public_default)
         form_layout.addRow(self.is_public_checkbox)
-        
+
+        # Make is_private and is_public mutually exclusive
+        self.is_private_checkbox.toggled.connect(self._on_private_toggled)
+        self.is_public_checkbox.toggled.connect(self._on_public_toggled)
+
         self.is_public_edit_checkbox = QCheckBox(self.translator.tr("upload.allow_edit"))
         form_layout.addRow(self.is_public_edit_checkbox)
         
@@ -259,14 +265,30 @@ class DocumentMetadataForm(QWidget):
         self.is_public_edit_checkbox.setEnabled(False)
         self.is_read_only_checkbox.setEnabled(False)
 
+    def _on_private_toggled(self, checked):
+        """Handle is_private checkbox change - make mutually exclusive with is_public."""
+        if checked:
+            # If private is checked, uncheck public
+            self.is_public_checkbox.blockSignals(True)
+            self.is_public_checkbox.setChecked(False)
+            self.is_public_checkbox.blockSignals(False)
+
+    def _on_public_toggled(self, checked):
+        """Handle is_public checkbox change - make mutually exclusive with is_private."""
+        if checked:
+            # If public is checked, uncheck private
+            self.is_private_checkbox.blockSignals(True)
+            self.is_private_checkbox.setChecked(False)
+            self.is_private_checkbox.blockSignals(False)
+
     def get_data(self):
         """Get form data with validation."""
         title = self.display_name_input.text().strip()
-        if not title:
+        if not title and not self.batch_mode:
             raise ValueError(self.translator.tr("upload.validation_title_required"))
-        
+
         return {
-            "title": title,
+            "title": title if title else None,
             "category_id": self.category_combo.currentData(),
             "file_type_id": self.file_type_combo.currentData(),
             "is_private": self.is_private_checkbox.isChecked(),

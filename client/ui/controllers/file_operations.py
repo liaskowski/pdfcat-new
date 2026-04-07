@@ -310,7 +310,7 @@ class FileOperations:
         self.controller.update_status(self.controller.translator.tr("common.loading"), 0)
         from ...utils.workers import DownloadWorker
         self._download_worker = DownloadWorker(self.api, doc.id)
-        self._download_worker.finished.connect(lambda content: self._on_download_finished(content, doc, save_path))
+        self._download_worker.finished.connect(lambda did, content: self._on_download_finished(content, doc, save_path))
         self._download_worker.error.connect(lambda e: self.controller._show_error(self.controller.translator.tr("common.error"), str(e)))
         self._download_worker.start()
 
@@ -369,19 +369,18 @@ class FileOperations:
     def _force_ui_refresh(self):
         """Force refresh of UI components to ensure data sync."""
         print("DEBUG: Forcing UI refresh to sync data")
-        
+
         # Refresh current document in preview panel
-        current_item = self.ui.file_grid.files_list.currentItem()
-        if current_item:
-            current_doc = current_item.data(Qt.ItemDataRole.UserRole)
-            if isinstance(current_doc, APIDocument):
-                print(f"DEBUG: Refreshing preview panel for doc {current_doc.id}")
-                self.ui.preview_panel.set_document(current_doc, self.controller._me_id, 
+        # Get selected document from FileGrid's _sel attribute
+        if hasattr(self.ui.file_grid, '_sel') and self.ui.file_grid._sel is not None:
+            selected_tile = self.ui.file_grid._sel
+            if hasattr(selected_tile, 'doc') and isinstance(selected_tile.doc, APIDocument):
+                print(f"DEBUG: Refreshing preview panel for doc {selected_tile.doc.id}")
+                self.ui.preview_panel.set_document(selected_tile.doc, self.controller._me_id,
                     self.controller._me.get("role") == "admin" if self.controller._me else False)
-        
+
         # Force grid repaint
-        self.ui.file_grid.files_list.viewport().update()
-        self.ui.file_grid.files_list.update()
+        self.ui.file_grid.update()
         
         print("DEBUG: UI refresh completed")
 
@@ -429,7 +428,7 @@ class FileOperations:
     def _start_open_download(self, doc: APIDocument, search_query: str):
         from ...utils.workers import DownloadWorker
         self._open_worker = DownloadWorker(self.api, doc.id)
-        self._open_worker.finished.connect(lambda content: self._on_open_finished(content, doc, search_query))
+        self._open_worker.finished.connect(lambda did, content: self._on_open_finished(content, doc, search_query))
         self._open_worker.error.connect(lambda e: self.controller._show_error(self.controller.translator.tr("common.error"), str(e)))
         self._open_worker.start()
 
@@ -460,10 +459,10 @@ class FileOperations:
 
     def on_add_pdf_clicked(self) -> None:
         files, _ = QFileDialog.getOpenFileNames(
-            self.view, 
-            self.controller.translator.tr("upload.title_upload"), 
-            "", 
-            "PDF Files (*.pdf *.PDF)"
+            self.view,
+            self.controller.translator.tr("upload.select_file"),
+            "",
+            self.controller.translator.tr("upload.pdf_filter")
         )
         if not files:
             return
@@ -544,11 +543,22 @@ class FileOperations:
         """Handle drag-and-drop events - non-blocking for large file sets."""
         from ...utils.logger import log_debug, log_error
         from ...api_manager import APIFolder, APIDocument
-        
+
         log_debug("file_operations", f"handle_drop called, tree_pos={tree_pos}")
 
         # Internal file grid move operation
-        if event.source() == self.ui.file_grid.files_list:
+        # Check if drag source is the FileGrid (either the grid widget itself or its children)
+        is_internal_drop = False
+        source_widget = event.source()
+        if source_widget is not None:
+            # Check if source is the FileGrid or any of its child widgets (tiles)
+            if source_widget is self.ui.file_grid or source_widget.parent() is self.ui.file_grid:
+                is_internal_drop = True
+            # Also check if source is the grid container widget (_gc)
+            elif hasattr(self.ui.file_grid, '_gc') and source_widget is self.ui.file_grid._gc:
+                is_internal_drop = True
+        
+        if is_internal_drop:
             item = self.ui.nav_tree.itemAt(tree_pos)
             if not item:
                 event.ignore()
@@ -571,12 +581,17 @@ class FileOperations:
                 event.ignore()
                 return
 
-            source_item = self.ui.file_grid.files_list.currentItem()
-            if not source_item:
+            # Get selected document from FileGrid's _sel attribute
+            if not hasattr(self.ui.file_grid, '_sel') or self.ui.file_grid._sel is None:
                 event.ignore()
                 return
-
-            doc = source_item.data(Qt.ItemDataRole.UserRole)
+            
+            selected_tile = self.ui.file_grid._sel
+            if not hasattr(selected_tile, 'doc'):
+                event.ignore()
+                return
+            
+            doc = selected_tile.doc
             if not isinstance(doc, APIDocument):
                 event.ignore()
                 return
@@ -610,8 +625,8 @@ class FileOperations:
                     folder_id=target_folder_id
                 )
 
-                self.controller.search_handler.fetch_from_server()
-                self.ui.nav_tree.refresh()
+                # Trigger immediate sync to ensure all clients see the change
+                self.controller._trigger_immediate_sync()
                 event.acceptProposedAction()
             except Exception as e:
                 self.controller._show_error(self.controller.translator.tr("common.error"), str(e))
@@ -631,13 +646,6 @@ class FileOperations:
                 log_debug("file_operations", "No local files found, ignoring drop")
                 return
 
-            # Show immediate feedback
-            file_count = len(paths)
-            if file_count > 10:
-                self.controller.update_status(f"Preparing {file_count} files for upload...")
-            else:
-                self.controller.update_status(f"Preparing {file_count} file(s) for upload...")
-
             # Get target folder info (quick operation)
             item = self.ui.nav_tree.itemAt(tree_pos)
             target_folder_id: Optional[int] = None
@@ -652,14 +660,58 @@ class FileOperations:
                     target_folder_id = None
                     is_public = True
 
-            log_debug("file_operations", f"Starting upload worker with {len(paths)} files")
-            # Start upload in background using QTimer
-            from PyQt6.QtCore import QTimer
-            self._defer_timer = QTimer()
-            self._defer_timer.setSingleShot(True)
-            self._defer_timer.timeout.connect(lambda: self.start_upload_worker(paths, target_folder_id, is_public))
-            self._defer_timer.start(0)
-            log_debug("file_operations", "QTimer started")
+            # Show appropriate dialog based on file count
+            if len(paths) == 1:
+                # Single file - show UploadDialog
+                log_debug("file_operations", f"Showing UploadDialog for single file: {paths[0]}")
+                is_admin = self.controller._me is not None and self.controller._me.get("role") == "admin"
+                dlg = UploadDialog(
+                    file_path=paths[0],
+                    api=self.api,
+                    is_public=is_public,
+                    current_user_id=self.controller._me_id,
+                    is_admin=is_admin,
+                    parent=self.view
+                )
+                # Note: UploadDialog doesn't support folder_id parameter directly
+                # Folder assignment would need to be done manually in the dialog or via form
+                if dlg.exec() == UploadDialog.DialogCode.Accepted:
+                    # If user dropped on a specific folder, update the uploaded document's folder
+                    if target_folder_id is not None and dlg.resulting_document:
+                        try:
+                            self.api.update_document(
+                                document_id=dlg.resulting_document.id,
+                                title=dlg.resulting_document.title,
+                                category_id=dlg.resulting_document.category.id if dlg.resulting_document.category else None,
+                                file_type_id=dlg.resulting_document.file_type.id if dlg.resulting_document.file_type else None,
+                                is_private=dlg.resulting_document.is_private,
+                                is_public=dlg.resulting_document.is_public,
+                                is_public_edit=dlg.resulting_document.is_public_edit,
+                                notes=dlg.resulting_document.notes or "",
+                                is_read_only=dlg.resulting_document.is_read_only,
+                                tags=dlg.resulting_document.tags,
+                                folder_id=target_folder_id
+                            )
+                        except Exception as e:
+                            log_error("file_operations", f"Failed to update folder for uploaded file: {e}", exc_info=True)
+                    
+                    self.controller.search_handler.fetch_from_server()
+                    # Trigger immediate sync for better synchronization
+                    self.controller._trigger_immediate_sync()
+            else:
+                # Multiple files - show BatchUploadDialog
+                log_debug("file_operations", f"Showing BatchUploadDialog for {len(paths)} files")
+                dlg = BatchUploadDialog(
+                    self.api, 
+                    paths, 
+                    self.view,
+                    target_folder_id=target_folder_id,
+                    is_public_default=is_public
+                )
+                if dlg.exec() == QDialog.DialogCode.Accepted:
+                    self.controller.search_handler.fetch_from_server()
+                    # Trigger immediate sync for better synchronization
+                    self.controller._trigger_immediate_sync()
         else:
             log_debug("file_operations", "No URLs in mimeData, ignoring drop")
             event.ignore()

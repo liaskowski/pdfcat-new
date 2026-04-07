@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import (
     QFrame, QVBoxLayout, QLabel, QPushButton,
     QScrollArea, QWidget, QHBoxLayout, QSizePolicy, QTextEdit, QMessageBox
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QThreadPool
 from PyQt6.QtGui import QPixmap, QPainter, QPainterPath
 from typing import Optional
 import qtawesome as qta
@@ -34,6 +34,9 @@ class PreviewPanel(QFrame):
         self.setMinimumWidth(200)
         
         self._document: APIDocument | None = None
+        self._current_doc_id = None
+        self._pool = QThreadPool()
+        self._pool.setMaxThreadCount(3) # Preview, Avatar, maybe Metadata
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
@@ -186,12 +189,20 @@ class PreviewPanel(QFrame):
         self.set_document(None) # Initial state
 
     def set_document(self, doc: APIDocument | None, current_user_id: int | None = None, is_admin: bool = False):
+        # 1. Update current document ID for tracking async tasks
         self._document = doc
+        self._current_doc_id = doc.id if doc else None
+        
+        # 2. Safety: Disconnect old signals (let runnables finish in background pool)
+        if hasattr(self, '_preview_signals') and self._preview_signals:
+            try: self._preview_signals.finished.disconnect()
+            except: pass
+            self._preview_signals = None
 
-        # Cancel any pending preview load
-        if hasattr(self, '_preview_worker') and self._preview_worker.isRunning():
-            self._preview_worker.terminate()
-            self._preview_worker.wait()
+        if hasattr(self, '_avatar_signals') and self._avatar_signals:
+            try: self._avatar_signals.finished.disconnect()
+            except: pass
+            self._avatar_signals = None
 
         if doc is None:
             self.date_label.setText(self.translator.tr("preview.date").format(date="—"))
@@ -222,9 +233,7 @@ class PreviewPanel(QFrame):
             size_text = f"{file_size / 1024:.1f} KB"
             self.size_label.setText(self.translator.tr("preview.size_kb").format(size=size_text))
         
-        # Fix: Set date label
         self.date_label.setText(self.translator.tr("preview.date").format(date=doc.upload_date or 'N/A'))
-        
         self.owner_label.setText(self.translator.tr("preview.owner").format(owner=doc.owner_username or 'N/A'))
         self.category_label.setText(self.translator.tr("preview.category").format(category=doc.category.name if doc.category else '—'))
         self.file_type_label.setText(self.translator.tr("preview.file_type").format(file_type=doc.file_type.name if doc.file_type else '—'))
@@ -238,100 +247,86 @@ class PreviewPanel(QFrame):
                     btn = QPushButton(display_text)
                     btn.setObjectName("tagButton")
                     btn.setCursor(Qt.CursorShape.PointingHandCursor)
-                    # Emit search query (ensure it starts with #)
                     search_query = tag if tag.startswith("#") else f"#{tag}"
                     btn.clicked.connect(lambda checked, q=search_query: self.tag_clicked.emit(q))
                     self.tags_layout.addWidget(btn)
-            # FlowLayout doesn't need addStretch() at the end
 
         self.description_text.setPlainText(doc.notes or self.translator.tr("preview.no_notes"))
         self._adjust_notes_height()
         
-        # Load avatar
+        # Load avatar ASYNCHRONOUSLY
         if doc.owner_avatar_url:
-            self._load_avatar(doc.owner_avatar_url)
+            self._load_avatar_async(doc.owner_avatar_url)
         else:
-            self.avatar_lbl.setText(self.translator.tr("preview.no_avatar"))
             self._set_default_avatar()
 
-        # Set permissions for edit/delete
+        # Set permissions
         is_owner = (current_user_id is not None and doc.owner_id == current_user_id)
         is_owner_or_admin = is_owner or is_admin
-        
         can_edit = is_owner_or_admin or doc.is_public_edit
         can_delete = is_owner_or_admin
-        # Read-only means "No Download" for non-owners/admins
         can_download = is_owner_or_admin or not doc.is_read_only
 
         self.edit_btn.setVisible(is_owner_or_admin or doc.is_public_edit)
         self.delete_btn.setVisible(is_owner_or_admin)
-        
         self.edit_btn.setEnabled(can_edit)
         self.delete_btn.setEnabled(can_delete)
         self.download_btn.setEnabled(can_download)
-        
-        if not can_download:
-            self.download_btn.setToolTip(self.translator.tr("preview.read_only_access"))
-        else:
-            self.download_btn.setToolTip(self.translator.tr("context_menu.download"))
-        
-        if not can_edit:
-            self.edit_btn.setToolTip(self.translator.tr("preview.read_only_access"))
-        else:
-            self.edit_btn.setToolTip(self.translator.tr("context_menu.edit_metadata"))
 
-        if not can_delete:
-            self.delete_btn.setToolTip(self.translator.tr("errors.access_denied"))
-        else:
-            self.delete_btn.setToolTip(self.translator.tr("common.delete"))
-
-        # Fetch preview - Check Cache FIRST to avoid redundant downloads
+        # Check Cache FIRST
         cached_preview = self.cache_manager.get_large_preview(doc.id)
         if cached_preview:
-            # Show cached image instantly
             self.preview_widget.show_static_preview(cached_preview)
-
-            # Load document in background for full interactivity (scrolling/zoom)
             self._load_preview_async(doc.id, doc.encryption_key)
         else:
-            # No cache - download and display asynchronously
             self._load_preview_async(doc.id, doc.encryption_key)
 
     def _load_preview_async(self, doc_id: int, password: Optional[str] = None):
-        """Load preview asynchronously using DownloadWorker with debouncing."""
-        from ..utils.workers import DownloadWorker
-        from PyQt6.QtCore import QTimer
-
-        # Cancel any pending load
-        if hasattr(self, '_preview_worker') and self._preview_worker.isRunning():
-            self._preview_worker.terminate()
-            self._preview_worker.wait()
-
-        # Show loading state
+        """Load preview asynchronously with debouncing using QThreadPool."""
+        if not hasattr(self, 'preview_widget'): return
         self.preview_widget.image_label.setText(self.translator.tr("preview.loading"))
 
-        # Debounce - wait 100ms before starting download
-        self._preview_load_timer = QTimer()
-        self._preview_load_timer.setSingleShot(True)
-        self._preview_load_timer.setInterval(100)
+        # De-bounce increased to 250ms for faster navigation
+        if not hasattr(self, '_preview_load_timer'):
+            from PyQt6.QtCore import QTimer
+            self._preview_load_timer = QTimer()
+            self._preview_load_timer.setSingleShot(True)
+            
+        try: self._preview_load_timer.timeout.disconnect()
+        except: pass
+        
+        self._preview_load_timer.setInterval(250)
         self._preview_load_timer.timeout.connect(
             lambda: self._start_preview_download(doc_id, password)
         )
         self._preview_load_timer.start()
     
     def _start_preview_download(self, doc_id: int, password: Optional[str] = None):
-        """Actually start the download after debounce."""
-        from ..utils.workers import DownloadWorker
+        """Actually start the download using QThreadPool."""
+        from ..utils.workers import DownloadRunnable
         
-        self._preview_worker = DownloadWorker(self.api, doc_id)
-        self._preview_worker.finished.connect(
-            lambda content: self._on_preview_loaded(content, password)
+        # Double check if we still want this document
+        if doc_id != self._current_doc_id:
+            return
+
+        # Disconnect old signals
+        if hasattr(self, '_preview_signals') and self._preview_signals:
+            try: self._preview_signals.finished.disconnect()
+            except: pass
+
+        runnable = DownloadRunnable(self.api, doc_id)
+        self._preview_signals = runnable.signals # Keep reference to signals
+        self._preview_signals.finished.connect(
+            lambda did, content: self._on_preview_loaded(did, content, password)
         )
-        self._preview_worker.error.connect(self._on_preview_error)
-        self._preview_worker.start()
+        self._preview_signals.error.connect(self._on_preview_error)
+        self._pool.start(runnable)
     
-    def _on_preview_loaded(self, content: bytes, password: Optional[str]):
+    def _on_preview_loaded(self, doc_id: int, content: bytes, password: Optional[str]):
         """Handle async preview load completion."""
+        if doc_id != self._current_doc_id:
+            return # Ignore stale results
+            
         try:
             self.preview_widget.load_document(content, password=password)
         except Exception as e:
@@ -339,13 +334,46 @@ class PreviewPanel(QFrame):
             self.preview_widget.image_label.setText(f"Error: {str(e)}")
     
     def _on_preview_error(self, error_msg: str):
-        """Handle preview load error."""
-        # Suppress 404 errors - document may have been deleted
-        if "404" in error_msg or "Not Found" in error_msg:
-            return
-        
+        if "404" in error_msg: return
         print(f"Preview load error: {error_msg}")
         self.preview_widget.image_label.setText(f"Failed to load preview")
+
+    def _load_avatar_async(self, url: str):
+        """Load avatar asynchronously via QThreadPool."""
+        from ..utils.workers import AvatarRunnable
+        
+        if not url or not url.strip():
+            self._set_default_avatar()
+            return
+            
+        full_url = url if url.startswith("http") else f"{self.api.base_url}/{url.lstrip('/')}"
+        
+        # Disconnect previous if any
+        if hasattr(self, '_avatar_signals') and self._avatar_signals:
+            try: self._avatar_signals.finished.disconnect()
+            except: pass
+
+        runnable = AvatarRunnable(self.api, full_url)
+        self._avatar_signals = runnable.signals
+        self._avatar_signals.finished.connect(self._on_avatar_loaded)
+        self._pool.start(runnable)
+
+    def _on_avatar_loaded(self, url: str, pixmap: QPixmap):
+        """Handle async avatar load."""
+        if not self._document or not self._document.owner_avatar_url:
+            return
+            
+        # Verify this avatar still belongs to current doc
+        current_avatar_url = self._document.owner_avatar_url
+        if not current_avatar_url.startswith("http"):
+            current_avatar_url = f"{self.api.base_url}/{current_avatar_url.lstrip('/')}"
+            
+        if url != current_avatar_url:
+            return
+            
+        self._set_avatar_pixmap(pixmap)
+
+
 
     def _clear_tags(self):
         while self.tags_layout.count():
@@ -360,29 +388,6 @@ class PreviewPanel(QFrame):
     def _on_preview_generated(self, pixmap: QPixmap):
         if self._document:
             self.cache_manager.save_large_preview(self._document.id, pixmap)
-
-    def _load_avatar(self, url: str):
-        """Load avatar with proper null checking."""
-        if not url or not url.strip():
-            self._set_default_avatar()
-            return
-            
-        if not url.startswith("http"):
-            full_url = f"{self.api.base_url}/{url.lstrip('/')}"
-        else:
-            full_url = url
-
-        try:
-            content = self.api.get_resource(full_url)
-            pix = QPixmap()
-            if pix.loadFromData(content):
-                self._set_avatar_pixmap(pix)
-            else:
-                print(f"Failed to load pixmap from data for {full_url}")
-                self._set_default_avatar()
-        except Exception as e:
-            print(f"Error loading avatar: {e}")
-            self._set_default_avatar()
 
     def _set_avatar_pixmap(self, pixmap: QPixmap):
         size = 24

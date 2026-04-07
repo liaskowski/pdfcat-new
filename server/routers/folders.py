@@ -1,11 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
+import os
+import logging
 
 from ..database import get_db
 from ..models import User, Folder, Document, DocumentIndex
 from ..schemas import FolderCreate, FolderResponse, FolderUpdate
 from ..dependencies import get_current_active_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/folders", tags=["folders"])
 
@@ -68,47 +72,64 @@ def read_folders(
 
 @router.delete("/{folder_id}")
 def delete_folder(
-    folder_id: int, 
+    folder_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    db_folder = db.query(Folder).filter(Folder.id == folder_id).first()
-    if not db_folder:
-        raise HTTPException(status_code=404, detail="Folder not found")
-    
-    if db_folder.owner_id != current_user.id and current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Not authorized")
+    try:
+        db_folder = db.query(Folder).filter(Folder.id == folder_id).first()
+        if not db_folder:
+            raise HTTPException(status_code=404, detail="Folder not found")
 
-    def recursive_delete(fid: int):
-        # 1. Delete all documents in this folder
-        docs = db.query(Document).filter(Document.folder_id == fid).all()
-        for doc in docs:
-            # Remove physical file
-            if os.path.exists(doc.file_path):
+        if db_folder.owner_id != current_user.id and current_user.role != "admin":
+            raise HTTPException(status_code=403, detail="Not authorized")
+
+        def recursive_delete(fid: int):
+            # 1. Delete all documents in this folder
+            docs = db.query(Document).filter(Document.folder_id == fid).all()
+            for doc in docs:
+                # Remove physical file
+                if doc.file_path:
+                    try:
+                        if os.path.exists(doc.file_path):
+                            os.remove(doc.file_path)
+                            logger.info(f"Deleted file: {doc.file_path}")
+                        else:
+                            logger.warning(f"File not found during folder deletion: {doc.file_path}")
+                    except Exception as e:
+                        logger.error(f"Failed to delete file {doc.file_path} during folder deletion: {e}")
+                        # Continue with document deletion even if file deletion fails
+
+                # Delete index and document
                 try:
-                    os.remove(doc.file_path)
+                    db.query(DocumentIndex).filter(DocumentIndex.document_id == doc.id).delete()
+                    db.delete(doc)
                 except Exception as e:
-                    logger.error(f"Failed to delete file {doc.file_path} during folder deletion: {e}")
-            
-            # Delete index and document
-            db.query(DocumentIndex).filter(DocumentIndex.document_id == doc.id).delete()
-            db.delete(doc)
+                    logger.error(f"Failed to delete document {doc.id} during folder deletion: {e}")
+                    # Continue with other deletions
 
-        # 2. Recursively delete subfolders
-        subfolders = db.query(Folder).filter(Folder.parent_id == fid).all()
-        for sub in subfolders:
-            recursive_delete(sub.id)
-            db.delete(sub)
+            # 2. Recursively delete subfolders
+            subfolders = db.query(Folder).filter(Folder.parent_id == fid).all()
+            for sub in subfolders:
+                try:
+                    recursive_delete(sub.id)
+                    db.delete(sub)
+                except Exception as e:
+                    logger.error(f"Failed to delete subfolder {sub.id} during folder deletion: {e}")
+                    # Continue with other deletions
 
-    # Note: Ensure os and logger are imported in folders.py
-    import os
-    import logging
-    logger = logging.getLogger(__name__)
-
-    recursive_delete(folder_id)
-    db.delete(db_folder)
-    db.commit()
-    return {"message": "Folder and all its contents deleted successfully"}
+        recursive_delete(folder_id)
+        db.delete(db_folder)
+        db.commit()
+        logger.info(f"Folder {folder_id} and all its contents deleted successfully")
+        return {"message": "Folder and all its contents deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting folder {folder_id}: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete folder: {str(e)}")
 
 @router.patch("/{folder_id}", response_model=FolderResponse)
 def patch_folder(

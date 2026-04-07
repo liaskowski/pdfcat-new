@@ -69,11 +69,16 @@ class SettingsDialog(QDialog):
         data_group = QGroupBox(self.translator.tr("settings.data_management"))
         data_layout = QVBoxLayout(data_group)
         data_layout.setSpacing(10)
-        
+
         self.manage_btn = QPushButton(self.translator.tr("settings.btn_manage"))
         self.manage_btn.clicked.connect(self._on_manage_clicked)
         data_layout.addWidget(self.manage_btn)
-        
+
+        self.clear_cache_btn = QPushButton(self.translator.tr("settings.btn_clear_cache"))
+        self.clear_cache_btn.setObjectName("warningButton")
+        self.clear_cache_btn.clicked.connect(self._on_clear_cache_clicked)
+        data_layout.addWidget(self.clear_cache_btn)
+
         layout.addWidget(data_group)
         layout.addStretch()
 
@@ -100,6 +105,40 @@ class SettingsDialog(QDialog):
     def _on_manage_clicked(self):
         dlg = ManageDialog(self.api, self.is_admin, self)
         dlg.exec()
+
+    def _on_clear_cache_clicked(self):
+        """Clear the thumbnail cache and show confirmation message."""
+        reply = QMessageBox.question(
+            self,
+            self.translator.tr("settings.clear_cache_confirm_title"),
+            self.translator.tr("settings.clear_cache_confirm_msg"),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            # Access the parent window (main_window) to get the file_grid reference
+            # Structure: main_window.ui.file_grid
+            parent_window = self.parent()
+            if parent_window and hasattr(parent_window, 'ui') and hasattr(parent_window.ui, 'file_grid'):
+                success = parent_window.ui.file_grid.clear_thumbnail_cache()
+                if success:
+                    QMessageBox.information(
+                        self,
+                        self.translator.tr("settings.clear_cache_success_title"),
+                        self.translator.tr("settings.clear_cache_success_msg")
+                    )
+                else:
+                    QMessageBox.warning(
+                        self,
+                        self.translator.tr("settings.clear_cache_error_title"),
+                        self.translator.tr("settings.clear_cache_error_msg")
+                    )
+            else:
+                QMessageBox.warning(
+                    self,
+                    self.translator.tr("settings.clear_cache_error_title"),
+                    self.translator.tr("settings.clear_cache_error_not_found")
+                )
 
     def _apply_settings(self):
         theme = self.theme_combo.currentText()

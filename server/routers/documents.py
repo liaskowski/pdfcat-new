@@ -281,9 +281,17 @@ async def delete_document(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    service = DocumentService(db)
-    service.delete_document(document_id, current_user)
-    return {"message": "Document deleted successfully"}
+    try:
+        service = DocumentService(db)
+        service.delete_document(document_id, current_user)
+        return {"message": "Document deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error deleting document {document_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @router.post("/documents/{document_id}/duplicate", response_model=DocumentResponse)
 async def duplicate_document(

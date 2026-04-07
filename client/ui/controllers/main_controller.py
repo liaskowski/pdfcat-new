@@ -268,17 +268,16 @@ class MainController:
             return
 
         # Get first document from the current view (file_grid)
-        items = self.ui.file_grid.files_list.findItems("*", Qt.MatchFlag.MatchWildcard)
-        if not items:
+        # Use the _files attribute from FileGrid instead of files_list
+        if not hasattr(self.ui.file_grid, '_files') or not self.ui.file_grid._files:
             return
-            
-        first_item = items[0]
-        doc = first_item.data(Qt.ItemDataRole.UserRole)
-        if not isinstance(doc, APIDocument):
+
+        first_doc = self.ui.file_grid._files[0]
+        if not isinstance(first_doc, APIDocument):
             return
 
         # Open file in viewer and highlight
-        self.file_ops.on_open_file_clicked(doc.id, search_query=query)
+        self.file_ops.on_open_file_clicked(first_doc.id, search_query=query)
 
     def _on_tag_clicked(self, tag_query: str):
         self.ui.search_bar.search_input.setText(tag_query)
@@ -360,9 +359,10 @@ class MainController:
             return
 
         # Refresh current folder/search view silently (no loading shimmer)
+        # CRITICAL: Use force_fresh=True to bypass cache and get actual server data
         logger.debug("Auto-refreshing current view...")
         mode, fid, oid = self.search_handler.current_view_params
-        self.search_handler.fetch_from_server(view_mode=mode, folder_id=fid, owner_id=oid, load_all=False)
+        self.search_handler.fetch_from_server(view_mode=mode, folder_id=fid, owner_id=oid, force_fresh=True)
     
     def _trigger_immediate_sync(self):
         """Trigger an immediate synchronization with the server."""
@@ -371,10 +371,20 @@ class MainController:
         self._has_recent_change = True
         self._recent_change_timer.start()  # Reset the timer
         
+        # Temporarily disconnect folder_changed signal to prevent race condition
+        # (force_refresh() would emit folder_changed → fetch_from_server() without force_fresh)
+        try:
+            self.ui.nav_tree.folder_changed.disconnect()
+        except TypeError:
+            pass  # Signal was not connected
+        
         # Force refresh navigation tree to sync folder structure across clients
         self.ui.nav_tree.force_refresh()
         
-        # Force fresh fetch of current view (bypass cache)
+        # Reconnect the signal
+        self.ui.nav_tree.folder_changed.connect(self.search_handler.fetch_from_server)
+        
+        # Force fresh fetch of current view (bypass cache) - called only once
         mode, fid, oid = self.search_handler.current_view_params
         self.search_handler.fetch_from_server(view_mode=mode, folder_id=fid, owner_id=oid, force_fresh=True)
     
@@ -440,7 +450,7 @@ class MainController:
             
         # Use AvatarWorker for non-blocking load
         self._avatar_worker = AvatarWorker(self.api, full_url)
-        self._avatar_worker.finished.connect(self.ui.title_bar.set_avatar)
+        self._avatar_worker.finished.connect(lambda url, pix: self.ui.title_bar.set_avatar(pix))
         self._avatar_worker.error.connect(lambda e: self.ui.title_bar.set_default_avatar())
         self._avatar_worker.start()
 

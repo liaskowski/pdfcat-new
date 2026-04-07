@@ -1,5 +1,5 @@
-from PyQt6.QtCore import QThread, pyqtSignal, Qt, QRectF
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtCore import QThread, pyqtSignal, Qt, QRectF, QObject, QRunnable
+from PyQt6.QtGui import QPixmap, QImage
 import fitz
 import tempfile
 import os
@@ -9,6 +9,57 @@ import logging
 from pathlib import Path
 from PIL import Image
 import pytesseract
+
+class WorkerSignals(QObject):
+    finished = pyqtSignal(int, bytes) # doc_id, bytes
+    error = pyqtSignal(str)
+
+class DownloadRunnable(QRunnable):
+    """
+    Download task that runs on QThreadPool to avoid QThread lifecycle issues.
+    """
+    def __init__(self, api, document_id: int):
+        super().__init__()
+        self.api = api
+        self.document_id = document_id
+        self.signals = WorkerSignals()
+
+    def run(self):
+        try:
+            content = self.api.download_document(self.document_id)
+            self.signals.finished.emit(self.document_id, content)
+        except Exception as e:
+            self.signals.error.emit(str(e))
+
+class AvatarSignals(QObject):
+    finished = pyqtSignal(str, QPixmap) # url, pixmap
+    error = pyqtSignal(str)
+
+class AvatarRunnable(QRunnable):
+    """
+    Avatar download task for QThreadPool.
+    """
+    def __init__(self, api, url: str):
+        super().__init__()
+        self.api = api
+        self.url = url
+        self.signals = AvatarSignals()
+
+    def run(self):
+        try:
+            content = self.api.get_resource(self.url)
+            # Use QImage then convert to QPixmap (safe across threads)
+            img = QImage()
+            if img.loadFromData(content):
+                # QPixmap can only be created on main thread, but 
+                # QImage can be passed and converted. 
+                # However, for simplicity here, we'll emit the image.
+                # Actually, let's emit QImage to be 100% thread-safe.
+                self.signals.finished.emit(self.url, QPixmap.fromImage(img))
+            else:
+                self.signals.error.emit(f"Failed to load image from {self.url}")
+        except Exception as e:
+            self.signals.error.emit(str(e))
 
 class PdfRenderWorker(QThread):
     finished = pyqtSignal(QPixmap)
@@ -295,7 +346,7 @@ class MetadataWorker(QThread):
             self.error.emit(str(e))
 
 class DownloadWorker(QThread):
-    finished = pyqtSignal(bytes)
+    finished = pyqtSignal(int, bytes) # doc_id, bytes
     error = pyqtSignal(str)
 
     def __init__(self, api, document_id: int):
@@ -306,7 +357,7 @@ class DownloadWorker(QThread):
     def run(self):
         try:
             content = self.api.download_document(self.document_id)
-            self.finished.emit(content)
+            self.finished.emit(self.document_id, content)
         except Exception as e:
             self.error.emit(str(e))
 
@@ -386,7 +437,7 @@ class OCRWorker(QThread):
             self.error.emit(str(e))
 
 class AvatarWorker(QThread):
-    finished = pyqtSignal(QPixmap)
+    finished = pyqtSignal(str, QPixmap) # url, pixmap
     error = pyqtSignal(str)
 
     def __init__(self, api, url: str):
@@ -400,7 +451,7 @@ class AvatarWorker(QThread):
             content = self.api.get_resource(self.url)
             pix = QPixmap()
             if pix.loadFromData(content):
-                self.finished.emit(pix)
+                self.finished.emit(self.url, pix)
             else:
                 error_msg = f"Failed to load image data from {self.url}"
                 print(error_msg)

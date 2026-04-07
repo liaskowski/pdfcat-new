@@ -19,7 +19,8 @@
       "Bash(npm run *)",
       "Bash(del *)",
       "Bash(copy *)",
-      "Bash(git diff *)"
+      "Bash(git diff *)",
+      "Bash(echo *)"
     ]
   },
   "$version": 3
