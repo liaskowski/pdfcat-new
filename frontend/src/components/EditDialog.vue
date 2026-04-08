@@ -4,6 +4,9 @@ import { X, Save, Loader2, CheckCircle2, AlertCircle } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useDocumentStore, type Document } from '@/stores/documents'
+import { useI18n } from '@/composables/useI18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   open: boolean
@@ -81,7 +84,7 @@ async function handleSave() {
     }, 1000)
 
   } catch (error: any) {
-    saveError.value = error.response?.data?.detail || error.message || 'Save failed'
+    saveError.value = error.response?.data?.detail || error.message || t('edit.save_failed')
   } finally {
     isSaving.value = false
   }
@@ -98,7 +101,7 @@ function handleClose() {
   <div v-if="isOpen" class="modal-overlay" @click.self="handleClose">
     <div class="modal-content">
       <div class="modal-header">
-        <h2 class="modal-title">Edit Document</h2>
+        <h2 class="modal-title">{{ t('edit.title') }}</h2>
         <button class="close-btn" @click="handleClose">
           <X class="h-4 w-4" />
         </button>
@@ -112,11 +115,11 @@ function handleClose() {
         <div v-if="isSaving || saveSuccess || saveError" class="save-status">
           <div v-if="isSaving" class="saving">
             <Loader2 class="h-4 w-4 animate-spin" />
-            <span>Saving...</span>
+            <span>{{ t('edit.saving') }}</span>
           </div>
           <div v-else-if="saveSuccess" class="success">
             <CheckCircle2 class="h-4 w-4" />
-            <span>Saved successfully!</span>
+            <span>{{ t('edit.saved_success') }}</span>
           </div>
           <div v-else-if="saveError" class="error">
             <AlertCircle class="h-4 w-4" />
@@ -126,24 +129,24 @@ function handleClose() {
 
         <div class="form-fields">
           <div class="form-group">
-            <label for="edit-title" class="form-label">Title</label>
-            <Input id="edit-title" v-model="title" placeholder="Document title" :disabled="isSaving" />
+            <label for="edit-title" class="form-label">{{ t('upload.title_label') }}</label>
+            <Input id="edit-title" v-model="title" :placeholder="t('upload.title_placeholder')" :disabled="isSaving" />
           </div>
 
           <div class="form-grid">
             <div class="form-group">
-              <label class="form-label">Category</label>
+              <label class="form-label">{{ t('upload.category_label') }}</label>
               <select v-model="categoryId" class="select-input" :disabled="isSaving">
-                <option :value="null">No Category</option>
+                <option :value="null">{{ t('upload.no_category') }}</option>
                 <option v-for="cat in docStore.categories" :key="cat.id" :value="cat.id">
                   {{ cat.name }}
                 </option>
               </select>
             </div>
             <div class="form-group">
-              <label class="form-label">File Type</label>
+              <label class="form-label">{{ t('upload.file_type_label') }}</label>
               <select v-model="fileTypeId" class="select-input" :disabled="isSaving">
-                <option :value="null">No Type</option>
+                <option :value="null">{{ t('upload.no_type') }}</option>
                 <option v-for="type in docStore.fileTypes" :key="type.id" :value="type.id">
                   {{ type.name }}
                 </option>
@@ -152,9 +155,9 @@ function handleClose() {
           </div>
 
           <div class="form-group">
-            <label class="form-label">Folder</label>
+            <label class="form-label">{{ t('upload.folder_label') }}</label>
             <select v-model="folderId" class="select-input" :disabled="isSaving">
-              <option :value="null">Root Directory</option>
+              <option :value="null">{{ t('upload.root') }}</option>
               <option v-for="f in docStore.folders" :key="f.id" :value="f.id">
                 {{ f.name }}
               </option>
@@ -162,36 +165,36 @@ function handleClose() {
           </div>
 
           <div class="form-group">
-            <label for="edit-tags" class="form-label">Tags (comma-separated)</label>
-            <Input id="edit-tags" v-model="tags" placeholder="tag1, tag2, tag3" :disabled="isSaving" />
+            <label for="edit-tags" class="form-label">{{ t('upload.tags_label') }}</label>
+            <Input id="edit-tags" v-model="tags" :placeholder="t('upload.tags_placeholder')" :disabled="isSaving" />
           </div>
 
           <div class="form-group">
-            <label for="edit-notes" class="form-label">Notes</label>
+            <label for="edit-notes" class="form-label">{{ t('upload.notes_label') }}</label>
             <textarea
               id="edit-notes"
               v-model="notes"
               class="textarea"
-              placeholder="Optional notes..."
+              :placeholder="t('upload.notes_placeholder')"
               :disabled="isSaving"
               rows="3"
             />
           </div>
 
           <div class="form-group">
-            <label class="form-label">Visibility</label>
+            <label class="form-label">{{ t('upload.visibility') }}</label>
             <div class="checkbox-group">
               <label class="checkbox-label">
                 <input type="checkbox" v-model="isPrivate" :disabled="isSaving || isPublic || isPublicEdit" />
-                Private
+                {{ t('upload.private') }}
               </label>
               <label class="checkbox-label">
                 <input type="checkbox" v-model="isPublic" :disabled="isSaving || isPrivate || isPublicEdit" />
-                Public (View)
+                {{ t('upload.public_view') }}
               </label>
               <label class="checkbox-label">
                 <input type="checkbox" v-model="isPublicEdit" :disabled="isSaving || isPrivate || isPublic" />
-                Public (Edit)
+                {{ t('upload.public_edit') }}
               </label>
             </div>
           </div>
@@ -199,17 +202,17 @@ function handleClose() {
           <div class="form-group">
             <label class="checkbox-label">
               <input type="checkbox" v-model="isReadOnly" :disabled="isSaving" />
-              Read-only
+              {{ t('document.is_read_only') }}
             </label>
           </div>
         </div>
       </div>
 
       <div class="modal-footer">
-        <Button variant="outline" @click="handleClose" :disabled="isSaving">Cancel</Button>
+        <Button variant="outline" @click="handleClose" :disabled="isSaving">{{ t('common.cancel') }}</Button>
         <Button @click="handleSave" :disabled="isSaving">
           <Save class="h-4 w-4 mr-2" />
-          {{ isSaving ? 'Saving...' : 'Save Changes' }}
+          {{ isSaving ? t('edit.saving') : t('edit.save_changes') }}
         </Button>
       </div>
     </div>

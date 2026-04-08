@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 
 const props = defineProps<{
   modelValue: boolean
@@ -21,23 +21,43 @@ const emit = defineEmits<{
 }>()
 
 const menuRef = ref<HTMLElement | null>(null)
+const menuPosition = ref({ top: 0, left: 0 })
 
-// Adjust position to keep within viewport
-const style = computed(() => {
-  if (!menuRef.value) return { top: `${props.y}px`, left: `${props.x}px` }
-  
-  let top = props.y
-  let left = props.x
-  
-  // Simple check (can be improved with useElementBounding)
-  if (left + 200 > window.innerWidth) left = window.innerWidth - 210
-  if (top + 300 > window.innerHeight) top = window.innerHeight - 310
-  
-  return {
-    top: `${top}px`,
-    left: `${left}px`
+// Dynamic position adjustment using actual element size
+function adjustPosition() {
+  if (!menuRef.value) {
+    menuPosition.value = { top: props.y, left: props.x }
+    return
   }
+
+  const rect = menuRef.value.getBoundingClientRect()
+  const width = rect.width || 200
+  const height = rect.height || 100
+
+  let left = props.x
+  let top = props.y
+
+  if (left + width > window.innerWidth) {
+    left = window.innerWidth - width - 10
+  }
+  if (top + height > window.innerHeight) {
+    top = window.innerHeight - height - 10
+  }
+
+  menuPosition.value = {
+    left: Math.max(10, left),
+    top: Math.max(10, top)
+  }
+}
+
+watch(() => props.modelValue, (val) => {
+  if (val) nextTick(() => adjustPosition())
 })
+
+const style = computed(() => ({
+  top: `${menuPosition.value.top}px`,
+  left: `${menuPosition.value.left}px`
+}))
 
 function handleClickOutside(event: MouseEvent) {
   if (props.modelValue && menuRef.value && !menuRef.value.contains(event.target as Node)) {

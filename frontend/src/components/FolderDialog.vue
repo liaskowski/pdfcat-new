@@ -4,6 +4,9 @@ import { X, FolderPlus } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useDocumentStore } from '@/stores/documents'
+import { useI18n } from '@/composables/useI18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   open: boolean
@@ -39,7 +42,7 @@ async function handleCreate() {
     emit('created')
     isOpen.value = false
   } catch (e: any) {
-    error.value = 'Failed to create folder'
+    error.value = t('folder.create_failed')
   } finally {
     isCreating.value = false
   }
@@ -56,7 +59,7 @@ function handleClose() {
   <div v-if="isOpen" class="modal-overlay" @click.self="handleClose">
     <div class="modal-content">
       <div class="modal-header">
-        <h2 class="modal-title">New Folder</h2>
+        <h2 class="modal-title">{{ t('folder.new_folder') }}</h2>
         <button class="close-btn" @click="handleClose">
           <X class="h-4 w-4" />
         </button>
@@ -64,10 +67,10 @@ function handleClose() {
 
       <div class="modal-body">
         <div class="form-group">
-          <label class="form-label">Folder Name</label>
-          <Input 
-            v-model="folderName" 
-            placeholder="Enter folder name" 
+          <label class="form-label">{{ t('folder.folder_name') }}</label>
+          <Input
+            v-model="folderName"
+            :placeholder="t('folder.name_placeholder')"
             @keydown.enter="handleCreate"
             autoFocus
           />
@@ -76,7 +79,7 @@ function handleClose() {
         <div class="form-group">
           <label class="checkbox-label">
             <input type="checkbox" v-model="isPublic" />
-            Public (Shared)
+            {{ t('folder.public') }}
           </label>
         </div>
 
@@ -84,10 +87,10 @@ function handleClose() {
       </div>
 
       <div class="modal-footer">
-        <Button variant="outline" @click="handleClose">Cancel</Button>
+        <Button variant="outline" @click="handleClose">{{ t('common.cancel') }}</Button>
         <Button @click="handleCreate" :disabled="!folderName.trim() || isCreating">
           <FolderPlus class="h-4 w-4 mr-2" />
-          Create
+          {{ t('common.create') }}
         </Button>
       </div>
     </div>

@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ChevronRight, Home } from 'lucide-vue-next'
+import { useI18n } from '@/composables/useI18n'
+
+const { t } = useI18n()
 
 interface PathSegment {
   label: string
@@ -25,7 +28,7 @@ function handleSegmentClick(segment: PathSegment) {
   <div class="breadcrumbs">
     <button
       class="breadcrumb-item home"
-      @click="handleSegmentClick({ label: 'Home', folderId: null, viewMode: 'my', ownerId: null })"
+      @click="handleSegmentClick({ label: t('nav.my_documents'), folderId: null, viewMode: 'my', ownerId: null })"
     >
       <Home class="h-4 w-4" />
     </button>

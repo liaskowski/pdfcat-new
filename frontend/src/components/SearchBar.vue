@@ -2,6 +2,9 @@
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { Search, X, Loader2 } from 'lucide-vue-next'
 import { useDocumentStore } from '@/stores/documents'
+import { useI18n } from '@/composables/useI18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   modelValue: string
@@ -28,9 +31,9 @@ watch(() => props.modelValue, (newVal) => {
 
 function handleInput() {
   emit('update:modelValue', localQuery.value)
-  
+
   if (debounceTimer) clearTimeout(debounceTimer)
-  
+
   if (localQuery.value.trim().length > 1) {
     debounceTimer = setTimeout(async () => {
       isLoading.value = true
@@ -103,7 +106,7 @@ onUnmounted(() => {
         type="text"
         class="search-input"
         :value="localQuery"
-        :placeholder="placeholder || 'Search documents...'"
+        :placeholder="placeholder || t('common.search_documents')"
         @input="e => { localQuery = (e.target as HTMLInputElement).value; handleInput() }"
         @keydown="handleKeydown"
         @focus="handleInput"
@@ -140,7 +143,6 @@ onUnmounted(() => {
 .search-container {
   position: relative;
   width: 100%;
-  max-width: 500px;
 }
 
 .search-bar {

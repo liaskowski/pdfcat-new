@@ -3,6 +3,9 @@ import { ref } from 'vue'
 import { X } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useI18n } from '@/composables/useI18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   open: boolean
@@ -39,38 +42,38 @@ function handleReset() {
 <template>
   <div v-if="open" class="adv-search-popover">
     <div class="popover-header">
-      <h3>Advanced Filters</h3>
+      <h3>{{ t('filters.advanced') }}</h3>
       <button class="close-btn" @click="$emit('update:open', false)">
         <X class="h-4 w-4" />
       </button>
     </div>
-    
+
     <div class="popover-body">
       <div class="form-group">
-        <label>Date Range</label>
+        <label>{{ t('filters.date_range') }}</label>
         <div class="date-range">
           <Input type="date" v-model="dateFrom" />
           <span>-</span>
           <Input type="date" v-model="dateTo" />
         </div>
       </div>
-      
+
       <div class="form-group">
-        <label>Tags</label>
-        <Input v-model="tags" placeholder="invoice, urgent..." />
+        <label>{{ t('filters.tags') }}</label>
+        <Input v-model="tags" :placeholder="t('filters.tags_placeholder')" />
       </div>
-      
+
       <div class="form-group">
         <label class="checkbox-label">
           <input type="checkbox" v-model="hasNotes" />
-          Has Notes
+          {{ t('filters.has_notes') }}
         </label>
       </div>
     </div>
-    
+
     <div class="popover-footer">
-      <Button variant="ghost" size="sm" @click="handleReset">Reset</Button>
-      <Button size="sm" @click="handleSearch">Apply Filters</Button>
+      <Button variant="ghost" size="sm" @click="handleReset">{{ t('filters.reset') }}</Button>
+      <Button size="sm" @click="handleSearch">{{ t('filters.apply_filters') }}</Button>
     </div>
   </div>
 </template>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useDocumentStore } from '@/stores/documents'
 import type { Document } from '@/stores/documents'
@@ -13,15 +13,28 @@ import SecurePdfViewer from '@/components/SecurePdfViewer.vue'
 import SearchBar from '@/components/SearchBar.vue'
 import AdminPanel from '@/components/AdminPanel.vue'
 import ProfileDialog from '@/components/ProfileDialog.vue'
+import ForgotPasswordDialog from '@/components/ForgotPasswordDialog.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { LogOut, Menu, X, FileText, Shield, Moon, Sun, Languages, User } from 'lucide-vue-next'
+import { LogOut, Menu, X, FileText, Shield, Moon, Sun, Languages, User, RefreshCw } from 'lucide-vue-next'
 import { useI18n } from '@/composables/useI18n'
+import { useAutoRefresh } from '@/composables/useAutoRefresh'
 
 const auth = useAuthStore()
 const docStore = useDocumentStore()
-const { setLocale, locale } = useI18n()
+const { setLocale, locale, t } = useI18n()
+
+// Auto-refresh (paused initially, will be controlled after dialogs are declared)
+const autoRefresh = useAutoRefresh({
+  onRefresh: async () => {
+    await docStore.fetchDocuments(currentViewMode.value, currentFolderId.value, currentOwnerId.value)
+  },
+  paused: true,
+})
+
+// Start auto-refresh after setup
+setTimeout(() => autoRefresh.resume(), 5000)
 
 // State
 const username = ref('')
@@ -34,7 +47,26 @@ const showEditDialog = ref(false)
 const showPdfViewer = ref(false)
 const showAdminPanel = ref(false)
 const showProfileDialog = ref(false)
+const showForgotPasswordDialog = ref(false)
 const isDark = ref(document.documentElement.classList.contains('dark'))
+
+// Pause auto-refresh when any dialog is open
+const isAnyDialogOpen = computed(() =>
+  showUploadDialog.value ||
+  showEditDialog.value ||
+  showPdfViewer.value ||
+  showAdminPanel.value ||
+  showProfileDialog.value ||
+  showForgotPasswordDialog.value
+)
+
+watch(isAnyDialogOpen, (isOpen) => {
+  if (isOpen) autoRefresh.pause()
+  else autoRefresh.resume()
+})
+
+// Start auto-refresh after setup (with 5s delay to let page load)
+setTimeout(() => autoRefresh.resume(), 5000)
 
 function toggleTheme() {
   isDark.value = !isDark.value
@@ -47,9 +79,13 @@ function toggleTheme() {
   }
 }
 
+const locales = ['en', 'ru', 'pl']
+const localeNames: Record<string, string> = { en: 'EN', ru: 'RU', pl: 'PL' }
+
 function toggleLanguage() {
-  const newLocale = locale.value === 'en' ? 'ru' : 'en'
-  setLocale(newLocale)
+  const currentIndex = locales.indexOf(locale.value)
+  const nextIndex = (currentIndex + 1) % locales.length
+  setLocale(locales[nextIndex])
 }
 
 // Navigation state
@@ -167,7 +203,7 @@ onMounted(async () => {
       docStore.fetchMetadata(),
       docStore.fetchFolders()
     ])
-    pathSegments.value = [{ label: 'My Documents', viewMode: 'my' }]
+    pathSegments.value = [{ label: t('nav.my_documents'), viewMode: 'my' }]
   }
 })
 </script>
@@ -193,6 +229,11 @@ onMounted(async () => {
             <Button type="submit" class="w-full" :disabled="isLoggingIn">
               Login
             </Button>
+            <div class="text-center mt-3">
+              <button class="forgot-password-link" @click="showForgotPasswordDialog = true" type="button">
+                Forgot Password?
+              </button>
+            </div>
           </form>
         </CardContent>
       </Card>
@@ -214,7 +255,7 @@ onMounted(async () => {
         </div>
         
         <div class="header-center">
-          <SearchBar 
+          <SearchBar
             v-model="docStore.searchQuery"
             @search="docStore.searchDocuments"
             @clear="docStore.fetchDocuments(currentViewMode, currentFolderId, currentOwnerId)"
@@ -222,6 +263,14 @@ onMounted(async () => {
         </div>
         
         <div class="header-right">
+          <Button
+            variant="ghost"
+            size="sm"
+            @click="autoRefresh.refresh()"
+            :title="t('common.refresh_now')"
+          >
+            <RefreshCw class="h-4 w-4" />
+          </Button>
           <Button 
             variant="ghost" 
             size="sm" 
@@ -231,13 +280,14 @@ onMounted(async () => {
             <Sun v-if="isDark" class="h-4 w-4" />
             <Moon v-else class="h-4 w-4" />
           </Button>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            @click="toggleLanguage" 
-            :title="locale === 'en' ? 'Switch to Russian' : 'Switch to English'"
+          <Button
+            variant="ghost"
+            size="sm"
+            @click="toggleLanguage"
+            :title="`Switch to ${localeNames[locales[(locales.indexOf(locale) + 1) % locales.length]]}`"
           >
             <Languages class="h-4 w-4" />
+            <span class="ml-1 text-xs">{{ localeNames[locale] }}</span>
           </Button>
           <Button 
             v-if="auth.user?.is_superuser" 
@@ -333,8 +383,12 @@ onMounted(async () => {
       @close="showAdminPanel = false" 
     />
 
-    <ProfileDialog 
-      v-model:open="showProfileDialog" 
+    <ProfileDialog
+      v-model:open="showProfileDialog"
+    />
+
+    <ForgotPasswordDialog
+      v-model:open="showForgotPasswordDialog"
     />
 
     <!-- PDF Viewer Modal -->
@@ -475,5 +529,25 @@ onMounted(async () => {
   .preview-panel {
     display: none;
   }
+}
+
+.forgot-password-link {
+  background: none;
+  border: none;
+  color: hsl(var(--primary));
+  font-size: 0.8125rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.forgot-password-link:hover {
+  color: hsl(var(--primary) / 0.8);
+}
+
+.refresh-status {
+  font-size: 0.6875rem;
+  color: hsl(var(--muted-foreground));
+  min-width: 3rem;
+  text-align: right;
 }
 </style>

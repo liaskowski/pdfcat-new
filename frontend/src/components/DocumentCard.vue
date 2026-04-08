@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { FileText, Check } from 'lucide-vue-next'
+import { ref, nextTick } from 'vue'
+import { FileText, Check, Loader2 } from 'lucide-vue-next'
 
 interface Document {
   id: number
@@ -19,14 +20,44 @@ const props = defineProps<{
   document: Document
   selected?: boolean
   viewLayout?: 'grid' | 'list'
+  renaming?: boolean
 }>()
 
 const emit = defineEmits<{
-  select: [doc: Document]
-  open: [doc: Document]
-  delete: [doc: Document]
-  rename: [doc: Document]
+  select: [doc: any]
+  open: [doc: any]
+  delete: [doc: any]
+  rename: [doc: any]
+  renameSaved: [doc: any, newTitle: string]
+  renameCanceled: []
+  checkboxClick: [doc: any, event: MouseEvent]
 }>()
+
+const renameInputRef = ref<HTMLElement | null>(null)
+const renameTitle = ref('')
+
+if (props.renaming) {
+  renameTitle.value = props.document.title
+  nextTick(() => renameInputRef.value?.focus())
+}
+
+function handleRenameSave() {
+  const newTitle = renameTitle.value.trim()
+  if (newTitle && newTitle !== props.document.title) {
+    emit('renameSaved', props.document, newTitle)
+  } else {
+    emit('renameCanceled')
+  }
+}
+
+function handleRenameCancel() {
+  emit('renameCanceled')
+}
+
+function onPreviewError(event: Event) {
+  const img = event.target as HTMLImageElement
+  img.style.display = 'none'
+}
 
 const formatDate = (dateString: string) => {
   return new Date(dateString).toLocaleDateString()
@@ -41,7 +72,8 @@ const formatFileSize = (bytes?: number) => {
 
 const getPreviewUrl = (docId: number) => {
   const token = localStorage.getItem('token')
-  return `http://localhost:8000/documents/${docId}/preview?token=${token}`
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+  return `${API_BASE_URL}/documents/${docId}/preview?token=${token}`
 }
 
 // In grid mode, we want standard image preview
@@ -54,7 +86,7 @@ const getPreviewUrl = (docId: number) => {
     :class="{ 'selected': selected, 'list-view': viewLayout === 'list' }"
   >
     <!-- Selection Checkbox (Visible on hover or selected) -->
-    <div class="selection-checkbox" :class="{ 'visible': selected }">
+    <div class="selection-checkbox" :class="{ 'visible': selected }" @click.stop="emit('checkboxClick', document, $event)">
       <div class="checkbox-indicator">
         <Check v-if="selected" class="h-3 w-3 text-white" />
       </div>
@@ -68,10 +100,10 @@ const getPreviewUrl = (docId: number) => {
           :alt="document.title"
           class="preview-image"
           loading="lazy"
-          @error="($event.target as HTMLImageElement).style.display = 'none'"
+          @error="onPreviewError"
         />
         <div class="preview-fallback">
-          <FileText class="h-8 w-8 text-muted-foreground opacity-20" />
+          <FileText class="h-8 w-8 text-muted-foreground opacity-50" />
         </div>
       </template>
       <template v-else>
@@ -81,7 +113,18 @@ const getPreviewUrl = (docId: number) => {
     
     <!-- Content -->
     <div class="card-content">
-      <h3 class="card-title" :title="document.title">{{ document.title }}</h3>
+      <div v-if="renaming" class="rename-input-wrapper">
+        <input
+          ref="renameInputRef"
+          v-model="renameTitle"
+          class="rename-input"
+          @keydown.enter="handleRenameSave"
+          @keydown.escape="handleRenameCancel"
+          @blur="handleRenameSave"
+        />
+        <Loader2 v-if="false" class="h-3 w-3 rename-spinner animate-spin" />
+      </div>
+      <h3 v-else class="card-title" :title="document.title">{{ document.title }}</h3>
       
       <div class="card-meta">
         <span class="meta-item date">{{ formatDate(document.upload_date) }}</span>
@@ -123,7 +166,7 @@ const getPreviewUrl = (docId: number) => {
 }
 
 .document-card.selected {
-  background-color: hsl(var(--accent));
+  background-color: hsl(var(--accent) / 0.3);
   border-color: hsl(var(--primary));
   box-shadow: 0 0 0 1px hsl(var(--primary));
 }
@@ -135,19 +178,22 @@ const getPreviewUrl = (docId: number) => {
   left: 0.5rem;
   z-index: 10;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.2s;
 }
 
 .document-card:hover .selection-checkbox,
 .selection-checkbox.visible {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .checkbox-indicator {
   width: 1.25rem;
   height: 1.25rem;
-  border: 1px solid hsl(var(--border));
-  background-color: hsl(var(--background));
+  border: 2px solid hsl(var(--muted-foreground) / 0.5);
+  background-color: transparent;
+  backdrop-filter: blur(4px);
   border-radius: 0.25rem;
   display: flex;
   align-items: center;
@@ -169,12 +215,19 @@ const getPreviewUrl = (docId: number) => {
 
 .document-card:not(.list-view) .card-preview {
   position: relative;
-  aspect-ratio: 3/4; /* PDF Aspect */
+  aspect-ratio: 3/4;
   background-color: hsl(var(--muted));
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.shimmer-preview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
 }
 
 .preview-image {
@@ -210,6 +263,23 @@ const getPreviewUrl = (docId: number) => {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.rename-input-wrapper {
+  width: 100%;
+}
+
+.rename-input {
+  width: 100%;
+  padding: 0.125rem 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: 1px solid hsl(var(--primary));
+  border-radius: 0.25rem;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  outline: none;
+  box-shadow: 0 0 0 2px hsl(var(--primary) / 0.2);
 }
 
 .card-meta {

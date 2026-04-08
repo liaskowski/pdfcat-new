@@ -2,9 +2,16 @@
 import { ref, onMounted, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import client from '@/api/client'
-import { Folder, FileText, Users, Globe, ChevronRight, ChevronDown, Plus, Trash2 } from 'lucide-vue-next'
+import { Folder, FileText, Users, Globe, ChevronRight, ChevronDown, Plus, Trash2, User } from 'lucide-vue-next'
 import FolderDialog from './FolderDialog.vue'
 import { useI18n } from '@/composables/useI18n'
+
+interface PublicUser {
+  id: number
+  username: string
+  email?: string
+  avatar_url?: string
+}
 
 interface NavItem {
   id: string
@@ -19,6 +26,7 @@ interface NavItem {
   isExpanded?: boolean
   canCreate?: boolean
   canDelete?: boolean
+  avatarUrl?: string
 }
 
 const props = defineProps<{
@@ -38,6 +46,11 @@ const navItems = ref<NavItem[]>([])
 const isLoading = ref(false)
 const showFolderDialog = ref(false)
 const createParentId = ref<number | null>(null)
+const publicUsers = ref<PublicUser[]>([])
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+const renamingFolderId = ref<number | null>(null)
+const renameFolderName = ref('')
+let lastClickTime = 0
 
 async function loadNavigation() {
   isLoading.value = true
@@ -57,6 +70,15 @@ async function loadNavigation() {
     })
     const sharedFolders: any[] = sharedFoldersResponse.data
 
+    // Load public users
+    try {
+      const usersResponse = await client.get('/users/public')
+      publicUsers.value = usersResponse.data
+    } catch (e) {
+      console.warn('Failed to load public users:', e)
+      publicUsers.value = []
+    }
+
     // Build tree structure
     const folders: NavItem[] = []
 
@@ -74,7 +96,36 @@ async function loadNavigation() {
       canCreate: true
     })
 
-    // Shared with me
+    // Shared with Me
+    const sharedChildren = buildFolderTree(sharedFolders, 'shared')
+
+    // Add users as children
+    const userItems: NavItem[] = publicUsers.value.map(u => ({
+      id: `user-${u.id}`,
+      label: u.username,
+      icon: User,
+      type: 'user' as const,
+      viewMode: 'shared' as const,
+      folderId: null,
+      ownerId: u.id,
+      avatarUrl: u.avatar_url,
+    }))
+
+    if (userItems.length > 0) {
+      // Add a separator/heading for users
+      sharedChildren.push({
+        id: 'shared-users-separator',
+        label: 'Users',
+        icon: Users,
+        type: 'root' as const,
+        viewMode: undefined,
+        folderId: null,
+        ownerId: null,
+        children: userItems,
+        isExpanded: false,
+      })
+    }
+
     folders.push({
       id: 'shared',
       label: t('nav.shared'),
@@ -83,7 +134,7 @@ async function loadNavigation() {
       viewMode: 'shared',
       folderId: null,
       ownerId: null,
-      children: buildFolderTree(sharedFolders, 'shared'),
+      children: sharedChildren,
       isExpanded: false
     })
 
@@ -142,7 +193,19 @@ function handleItemClick(item: NavItem) {
 
 function handleFolderClick(e: Event, item: NavItem) {
   e.stopPropagation()
-  handleItemClick(item)
+  // Debounce: if this might be part of a double-click, delay navigation
+  const now = Date.now()
+  if (now - lastClickTime < 300) {
+    return // Likely a double-click — skip navigation
+  }
+  lastClickTime = now
+
+  // Delayed navigation to allow for possible second click
+  setTimeout(() => {
+    // If rename was started, don't navigate
+    if (renamingFolderId.value === item.folderId) return
+    handleItemClick(item)
+  }, 300)
 }
 
 function toggleExpand(item: NavItem) {
@@ -162,12 +225,12 @@ function handleCreateFolder(e: Event, parentId: number | null = null) {
 
 async function handleDeleteFolder(e: Event, folderId: number) {
   e.stopPropagation()
-  if (confirm('Are you sure you want to delete this folder? All contents will be deleted.')) {
+  if (confirm(t('folder.delete_confirm'))) {
     try {
       await client.delete(`/folders/${folderId}`)
       loadNavigation()
     } catch (e) {
-      alert('Failed to delete folder')
+      alert(t('folder.delete_failed'))
     }
   }
 }
@@ -185,13 +248,39 @@ watch(() => auth.user, () => {
 defineExpose({
   refresh: loadNavigation
 })
+
+function startRenameFolder(e: Event, item: NavItem) {
+  e.stopPropagation()
+  if (item.type !== 'folder' || !item.folderId) return
+  renamingFolderId.value = item.folderId
+  renameFolderName.value = item.label
+}
+
+async function saveFolderRename() {
+  const folderId = renamingFolderId.value
+  const newName = renameFolderName.value.trim()
+  if (!folderId || !newName) { cancelFolderRename(); return }
+
+  try {
+    await client.patch(`/folders/${folderId}`, { name: newName })
+    await loadNavigation()
+  } catch (e) {
+    console.error('Failed to rename folder:', e)
+  } finally {
+    renamingFolderId.value = null
+  }
+}
+
+function cancelFolderRename() {
+  renamingFolderId.value = null
+}
 </script>
 
 <template>
   <div class="navigation-tree">
     <div class="nav-header">
       <h3 class="nav-title">{{ t('nav.folders') }}</h3>
-      <button class="add-folder-btn" @click="handleCreateFolder($event, null)" title="New Root Folder">
+      <button class="add-folder-btn" @click="handleCreateFolder($event, null)" :title="t('folder.new_root_folder')">
         <Plus class="h-4 w-4" />
       </button>
     </div>
@@ -223,7 +312,7 @@ defineExpose({
               v-if="item.canCreate"
               class="action-btn" 
               @click="handleCreateFolder($event, item.folderId)"
-              title="New Subfolder"
+              :title="t('folder.new_subfolder')"
             >
               <Plus class="h-3 w-3" />
             </button>
@@ -238,7 +327,7 @@ defineExpose({
             :class="{ active: isSelected(child), expanded: child.isExpanded }"
             @click="handleFolderClick($event, child)"
           >
-            <button 
+            <button
               v-if="child.children && child.children.length > 0"
               class="expand-btn"
               @click.stop="toggleExpand(child)"
@@ -246,23 +335,47 @@ defineExpose({
               <ChevronDown v-if="child.isExpanded" class="h-4 w-4" />
               <ChevronRight v-else class="h-4 w-4" />
             </button>
-            <Folder class="nav-icon h-4 w-4" />
-            <span class="nav-label">{{ child.label }}</span>
-            
-            <div class="item-actions">
+
+            <!-- User avatar -->
+            <template v-if="child.type === 'user'">
+              <div class="user-avatar">
+                <img v-if="child.avatarUrl" :src="`${API_BASE_URL}/${child.avatarUrl}`" :alt="child.label" class="avatar-img" />
+                <User v-else class="h-4 w-4" />
+              </div>
+            </template>
+            <!-- Folder icon -->
+            <Folder v-else class="nav-icon h-4 w-4" />
+
+            <span
+              class="nav-label"
+              :class="{ 'can-rename': child.type === 'folder' }"
+              @dblclick="startRenameFolder($event, child)"
+            >{{ child.label }}</span>
+
+            <!-- Inline rename input for folders -->
+            <input
+              v-if="child.type === 'folder' && renamingFolderId === child.folderId"
+              v-model="renameFolderName"
+              class="folder-rename-input"
+              @keydown.enter="saveFolderRename"
+              @keydown.escape="cancelFolderRename"
+              @blur="saveFolderRename"
+            />
+
+            <div class="item-actions" v-if="!(child.type === 'folder' && renamingFolderId === child.folderId)">
               <button 
                 v-if="child.canCreate"
                 class="action-btn" 
                 @click="handleCreateFolder($event, child.folderId)"
-                title="New Subfolder"
+                :title="t('folder.new_subfolder')"
               >
                 <Plus class="h-3 w-3" />
               </button>
               <button 
                 v-if="child.canDelete"
-                class="action-btn delete-btn" 
+                class="action-btn delete-btn"
                 @click="handleDeleteFolder($event, child.folderId!)"
-                title="Delete Folder"
+                :title="t('folder.delete_folder')"
               >
                 <Trash2 class="h-3 w-3" />
               </button>
@@ -451,5 +564,44 @@ defineExpose({
 
 .delete-btn:hover {
   color: hsl(var(--destructive));
+}
+
+.user-avatar {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: hsl(var(--muted));
+  flex-shrink: 0;
+}
+
+.avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.user-avatar .h-4 {
+  color: hsl(var(--muted-foreground));
+}
+
+.can-rename {
+  cursor: text;
+}
+
+.folder-rename-input {
+  flex: 1;
+  padding: 0.125rem 0.375rem;
+  font-size: 0.875rem;
+  border: 1px solid hsl(var(--primary));
+  border-radius: 0.25rem;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  outline: none;
+  box-shadow: 0 0 0 2px hsl(var(--primary) / 0.2);
+  min-width: 0;
 }
 </style>

@@ -66,6 +66,16 @@ export const useDocumentStore = defineStore('documents', () => {
   const currentFolderId = ref<number | null>(null)
   const currentOwnerId = ref<number | null>(null)
 
+  // Advanced search filters
+  const advancedFilters = ref({
+    dateFrom: '',
+    dateTo: '',
+    tags: '',
+    hasNotes: false,
+    categoryId: null as number | null,
+    fileTypeId: null as number | null,
+  })
+
   // Document Methods
   async function fetchDocuments(viewMode = 'my', folderId: number | null = null, ownerId: number | null = null) {
     loading.value = true
@@ -192,6 +202,75 @@ export const useDocumentStore = defineStore('documents', () => {
     return data
   }
 
+  async function searchWithFilters() {
+    loading.value = true
+    try {
+      const filters = advancedFilters.value
+      const params: Record<string, any> = {}
+
+      if (filters.dateFrom) params.date_from = filters.dateFrom
+      if (filters.dateTo) params.date_to = filters.dateTo
+      if (filters.tags) params.tags = filters.tags
+      if (filters.hasNotes) params.has_notes = true
+      if (filters.categoryId) params.category_id = filters.categoryId
+      if (filters.fileTypeId) params.file_type_id = filters.fileTypeId
+
+      // Use /search endpoint if it supports these params, otherwise fall back to client-side
+      try {
+        const { data } = await client.get('/search', { params })
+        documents.value = data
+        return data
+      } catch {
+        // Backend doesn't support all filters, do client-side filtering
+        const { data } = await client.get('/documents/', {
+          params: {
+            view_mode: currentViewMode.value,
+            folder_id: currentFolderId.value,
+            owner_id: currentOwnerId.value,
+            limit: 500,
+          },
+        })
+        documents.value = filterDocumentsLocally(data, filters)
+        return documents.value
+      }
+    } finally {
+      loading.value = false
+    }
+  }
+
+  function filterDocumentsLocally(docs: Document[], filters: typeof advancedFilters.value): Document[] {
+    let filtered = [...docs]
+
+    if (filters.dateFrom) {
+      const from = new Date(filters.dateFrom)
+      filtered = filtered.filter(d => new Date(d.upload_date) >= from)
+    }
+    if (filters.dateTo) {
+      const to = new Date(filters.dateTo)
+      to.setHours(23, 59, 59, 999)
+      filtered = filtered.filter(d => new Date(d.upload_date) <= to)
+    }
+    if (filters.tags) {
+      const searchTags = filters.tags.split(',').map(t => t.trim().toLowerCase())
+      filtered = filtered.filter(d => {
+        if (!d.tags) return false
+        const docTags = d.tags.toLowerCase().split(',').map(t => t.trim())
+        return searchTags.some(tag => docTags.includes(tag))
+      })
+    }
+    if (filters.hasNotes) {
+      filtered = filtered.filter(d => d.notes && d.notes.trim())
+    }
+    if (filters.categoryId) {
+      filtered = filtered.filter(d => d.category_id === filters.categoryId)
+    }
+    if (filters.fileTypeId) {
+      filtered = filtered.filter(d => d.file_type_id === filters.fileTypeId)
+    }
+
+    return filtered
+  }
+
   function clearDocuments() {
     documents.value = []
   }
@@ -219,6 +298,8 @@ export const useDocumentStore = defineStore('documents', () => {
     fetchMetadata,
     searchDocuments,
     getSuggestions,
+    advancedFilters,
+    searchWithFilters,
     clearDocuments
   }
 })

@@ -3,9 +3,11 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useDocumentStore, type Document } from '@/stores/documents'
 import DocumentCard from './DocumentCard.vue'
 import ContextMenu from './ui/ContextMenu.vue'
-import AdvancedSearch from './AdvancedSearch.vue'
-import { Upload, Search, Grid3X3, List, Loader2, Trash2, FolderInput, X, Filter } from 'lucide-vue-next'
+import MoveDialog from './MoveDialog.vue'
+import { Upload, Grid3X3, List, Trash2, FolderInput, X } from 'lucide-vue-next'
+import Shimmer from './ui/Shimmer.vue'
 import { useI18n } from '@/composables/useI18n'
+import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
 
 const props = defineProps<{
   viewMode: string
@@ -33,7 +35,6 @@ const showContextMenu = ref(false)
 const contextMenuX = ref(0)
 const contextMenuY = ref(0)
 const contextTargetId = ref<number | null>(null)
-const showAdvancedSearch = ref(false)
 
 // View State
 const viewLayout = ref<'grid' | 'list'>('grid')
@@ -68,14 +69,33 @@ const sortedDocuments = computed(() => {
 
 // --- Selection Logic ---
 
-function toggleSelection(id: number, multi: boolean, range: boolean) {
+function toggleSelection(id: number, multi: boolean, range: boolean, isCheckbox = false) {
+  if (isCheckbox) {
+    // Checkbox click — ВСЕГДА toggle этого конкретного ID
+    const newSet = new Set(selectedIds.value)
+    if (newSet.has(id)) {
+      newSet.delete(id)
+    } else {
+      newSet.add(id)
+    }
+    selectedIds.value = newSet
+    // Обновляем превью
+    if (selectedIds.value.size === 1) {
+      const doc = docStore.documents.find(d => d.id === id)
+      if (doc) emit('documentSelect', doc)
+    } else {
+      emit('documentSelect', null)
+    }
+    return
+  }
+
   const newSet = new Set(multi ? selectedIds.value : [])
-  
+
   if (range && lastSelectedId.value !== null) {
     const docs = sortedDocuments.value
     const idx1 = docs.findIndex(d => d.id === lastSelectedId.value)
     const idx2 = docs.findIndex(d => d.id === id)
-    
+
     if (idx1 !== -1 && idx2 !== -1) {
       const start = Math.min(idx1, idx2)
       const end = Math.max(idx1, idx2)
@@ -84,17 +104,17 @@ function toggleSelection(id: number, multi: boolean, range: boolean) {
       }
     }
   } else {
-    if (newSet.has(id)) {
-      if (multi) newSet.delete(id)
-      else newSet.clear() // Click on selected in single mode deselects others? No, usually keeps it.
+    // Card click — select only this one
+    if (newSet.has(id) && !multi) {
+      newSet.clear()
     } else {
       newSet.add(id)
     }
   }
-  
+
   selectedIds.value = newSet
   lastSelectedId.value = id
-  
+
   // Emit single select for preview panel
   if (newSet.size === 1) {
     const doc = docStore.documents.find(d => d.id === id)
@@ -105,15 +125,22 @@ function toggleSelection(id: number, multi: boolean, range: boolean) {
 }
 
 function handleCardClick(doc: Document, event: MouseEvent) {
-  if (event.ctrlKey || event.metaKey) {
-    toggleSelection(doc.id, true, false)
-  } else if (event.shiftKey) {
-    toggleSelection(doc.id, true, true)
-  } else {
-    // If selecting one that is already selected in multi-mode, don't clear others immediately on mousedown
-    // But for simplicity, let's follow standard explorer behavior: click without modifiers clears others
-    toggleSelection(doc.id, false, false)
+  const target = event.target as HTMLElement
+  const isCheckbox = target.closest('.selection-checkbox') || target.closest('.checkbox-indicator')
+
+  if (isCheckbox) {
+    // Клик по checkbox — toggle selection для конкретного документа
+    toggleSelection(doc.id, event.ctrlKey || event.metaKey, event.shiftKey, true)
+    return
   }
+
+  // Клик по карточке — показываем превью, НЕ выделяем
+  emit('documentSelect', doc)
+}
+
+function handleCheckboxClick(doc: any, event: MouseEvent) {
+  // Checkbox click — toggle selection для конкретного документа
+  toggleSelection(doc.id, event.ctrlKey || event.metaKey, event.shiftKey, true)
 }
 
 function selectAll() {
@@ -125,6 +152,8 @@ function selectAll() {
 }
 
 // --- Context Menu Logic ---
+
+const showMoveDialog = ref(false)
 
 function handleContextMenu(doc: Document, event: MouseEvent) {
   // If right-clicked item is not in selection, select it exclusively
@@ -146,14 +175,14 @@ const contextMenuItems = computed(() => {
 
   return [
     {
-      label: single ? 'Open' : `Open ${count} items`,
+      label: single ? t('common.open') : `${t('common.open')} ${count} ${t('common.documents')}`,
       action: () => {
         if (single && targetDoc) emit('documentOpen', targetDoc)
       },
       disabled: !single
     },
     {
-      label: 'Download',
+      label: t('common.download'),
       action: () => {
         selectedIds.value.forEach(id => {
           const doc = docStore.documents.find(d => d.id === id)
@@ -163,15 +192,15 @@ const contextMenuItems = computed(() => {
     },
     { label: '', separator: true },
     {
-      label: 'Move to Folder',
+      label: t('common.move'),
       icon: FolderInput,
       action: () => {
-        alertMoveNotImplemented()
+        showMoveDialog.value = true
       }
     },
     { label: '', separator: true },
     {
-      label: 'Delete',
+      label: t('common.delete'),
       icon: Trash2,
       danger: true,
       action: () => handleBatchDelete()
@@ -181,34 +210,46 @@ const contextMenuItems = computed(() => {
 
 // --- Batch Actions ---
 
-function alertMoveNotImplemented() {
-  alert('Batch move not implemented yet')
+function handleBatchMove() {
+  if (selectedIds.value.size === 0) return
+  showMoveDialog.value = true
+}
+
+function handleMoveComplete() {
+  docStore.fetchDocuments(props.viewMode, props.folderId, props.ownerId)
+  selectedIds.value.clear()
 }
 
 async function handleBatchDelete() {
   const count = selectedIds.value.size
-  if (!confirm(`Are you sure you want to delete ${count} documents?`)) return
-  
+  if (!confirm(t('confirm.delete_documents').replace('{count}', count.toString()))) return
+
   try {
     const ids = Array.from(selectedIds.value)
-    // Parallel delete (better to have batch API)
     await Promise.all(ids.map(id => docStore.deleteDocument(id)))
     selectedIds.value.clear()
   } catch (e) {
-    alert('Failed to delete some documents')
+    alert(t('confirm.delete_failed'))
   }
 }
 
 // --- Watchers ---
 
-function handleAdvancedSearch(filters: any) {
-  // Construct query string or filter locally/via API
-  // For now, let's append tags to search query
-  if (filters.tags) {
-    docStore.searchQuery += ` ${filters.tags}`
-    docStore.searchDocuments(docStore.searchQuery)
-  }
+// Filter state for toolbar
+const selectedCategoryId = ref<number | null>(null)
+const selectedFileTypeId = ref<number | null>(null)
+
+function handleFilterChange() {
+  docStore.advancedFilters.categoryId = selectedCategoryId.value
+  docStore.advancedFilters.fileTypeId = selectedFileTypeId.value
+  docStore.searchWithFilters()
 }
+
+const currentFolderName = computed(() => {
+  if (props.folderId === null) return ''
+  const folder = docStore.folders.find(f => f.id === props.folderId)
+  return folder?.name || ''
+})
 
 watch(() => props.folderId, () => {
   selectedIds.value.clear()
@@ -219,53 +260,127 @@ watch(() => props.viewMode, () => {
   selectedIds.value.clear()
 })
 
+// --- Keyboard Shortcuts ---
+
+// Simple clipboard state for copy/cut/paste
+const clipboard = ref<{ ids: number[]; operation: 'copy' | 'cut' } | null>(null)
+const renamingDocId = ref<number | null>(null)
+
+async function handleCopy() {
+  if (selectedIds.value.size === 0) return
+  clipboard.value = { ids: Array.from(selectedIds.value), operation: 'copy' }
+}
+
+async function handleCut() {
+  if (selectedIds.value.size === 0) return
+  clipboard.value = { ids: Array.from(selectedIds.value), operation: 'cut' }
+}
+
+async function handlePaste() {
+  if (!clipboard.value) return
+  const targetFolderId = props.folderId
+
+  for (const id of clipboard.value.ids) {
+    try {
+      await docStore.duplicateDocument(id, targetFolderId ?? undefined)
+    } catch (e) {
+      console.error('Failed to paste document:', e)
+    }
+  }
+
+  // If it was a cut operation, remove originals
+  if (clipboard.value.operation === 'cut') {
+    for (const id of clipboard.value.ids) {
+      try {
+        await docStore.deleteDocument(id)
+      } catch (e) {
+        console.error('Failed to delete cut document:', e)
+      }
+    }
+  }
+
+  clipboard.value = null
+  docStore.fetchDocuments(props.viewMode, props.folderId, props.ownerId)
+  selectedIds.value.clear()
+}
+
+function handleRename() {
+  if (selectedIds.value.size === 1) {
+    const id = Array.from(selectedIds.value)[0]
+    renamingDocId.value = id
+  }
+}
+
+async function handleRenameSaved(doc: any, newTitle: string) {
+  try {
+    await docStore.updateDocument(doc.id, { title: newTitle })
+  } catch (e) {
+    console.error('Failed to rename document:', e)
+  } finally {
+    renamingDocId.value = null
+  }
+}
+
+function handleRenameCanceled() {
+  renamingDocId.value = null
+}
+
+useKeyboardShortcuts({
+  onCopy: handleCopy,
+  onCut: handleCut,
+  onPaste: handlePaste,
+  onRename: handleRename,
+  onDelete: handleBatchDelete,
+  onSelectAll: selectAll,
+  onSearch: () => {
+    const input = document.querySelector('.search-input') as HTMLInputElement
+    input?.focus()
+  },
+  onUpload: () => emit('upload'),
+  onClose: () => {
+    selectedIds.value.clear()
+    showContextMenu.value = false
+  }
+})
+
 onMounted(() => {
   docStore.fetchDocuments(props.viewMode)
 })
 </script>
 
 <template>
-  <div class="file-grid-container" @click.self="selectedIds.clear()">
+  <div class="file-grid-container">
     <!-- Toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
         <h2 class="toolbar-title">
-          {{ folderId ? 'Folder' : viewMode === 'my' ? t('nav.my_documents') : viewMode === 'shared' ? t('nav.shared') : t('nav.community') }}
+          {{ currentFolderName || (viewMode === 'my' ? t('nav.my_documents') : viewMode === 'shared' ? t('nav.shared') : t('nav.community')) }}
         </h2>
-        <span class="document-count">{{ sortedDocuments.length }} documents</span>
+        <span class="document-count">{{ sortedDocuments.length }} {{ t('common.documents') }}</span>
       </div>
       
       <div class="toolbar-right">
-        <div class="search-box">
-          <Search class="h-4 w-4" />
-          <input 
-            type="text" 
-            :placeholder="t('common.search')" 
-            class="search-input"
-            v-model="docStore.searchQuery"
-            @keyup.enter="docStore.searchDocuments(docStore.searchQuery)"
-          />
-          <button 
-            class="adv-search-btn" 
-            :class="{ active: showAdvancedSearch }"
-            @click="showAdvancedSearch = !showAdvancedSearch"
-            title="Advanced Filters"
-          >
-            <Filter class="h-3 w-3" />
-          </button>
-          
-          <AdvancedSearch 
-            v-model:open="showAdvancedSearch"
-            @search="handleAdvancedSearch"
-          />
+        <div class="toolbar-filters">
+          <select v-model="selectedCategoryId" class="filter-select" @change="handleFilterChange">
+            <option :value="null">{{ t('filters.all_categories') }}</option>
+            <option v-for="cat in docStore.categories" :key="cat.id" :value="cat.id">
+              {{ cat.name }}
+            </option>
+          </select>
+          <select v-model="selectedFileTypeId" class="filter-select" @change="handleFilterChange">
+            <option :value="null">{{ t('filters.all_types') }}</option>
+            <option v-for="type in docStore.fileTypes" :key="type.id" :value="type.id">
+              {{ type.name }}
+            </option>
+          </select>
         </div>
-        
+
         <div class="view-controls">
           <button 
             class="view-btn"
             :class="{ active: viewLayout === 'grid' }"
             @click="viewLayout = 'grid'"
-            title="Grid view"
+            :title="t('viewer.toggle_sidebar')"
           >
             <Grid3X3 class="h-4 w-4" />
           </button>
@@ -273,7 +388,7 @@ onMounted(() => {
             class="view-btn"
             :class="{ active: viewLayout === 'list' }"
             @click="viewLayout = 'list'"
-            title="List view"
+            :title="t('common.info')"
           >
             <List class="h-4 w-4" />
           </button>
@@ -289,18 +404,22 @@ onMounted(() => {
     <!-- Batch Actions Bar -->
     <div v-if="selectedIds.size > 0" class="batch-actions-bar">
       <div class="batch-left">
-        <button class="close-selection-btn" @click="selectedIds.clear()">
-          <X class="h-4 w-4" />
+        <span class="selection-count">{{ selectedIds.size }} {{ t('common.selected') }}</span>
+        <button class="batch-action" @click="selectAll">
+          <span class="batch-icon">☑</span> {{ t('common.select_all') }}
         </button>
-        <span class="selection-count">{{ selectedIds.size }} selected</span>
-        <button class="select-all-btn" @click="selectAll">Select All</button>
       </div>
       <div class="batch-right">
-        <button class="batch-btn" @click="alertMoveNotImplemented">
-          <FolderInput class="h-4 w-4 mr-2" /> Move
+        <button class="batch-action" @click="handleBatchMove">
+          <FolderInput class="h-4 w-4" />
+          <span>{{ t('common.move') }}</span>
         </button>
-        <button class="batch-btn danger" @click="handleBatchDelete">
-          <Trash2 class="h-4 w-4 mr-2" /> Delete
+        <button class="batch-action danger" @click="handleBatchDelete">
+          <Trash2 class="h-4 w-4" />
+          <span>{{ t('common.delete') }}</span>
+        </button>
+        <button class="batch-close" @click="selectedIds.clear()" :title="t('common.close')">
+          <X class="h-4 w-4" />
         </button>
       </div>
     </div>
@@ -308,17 +427,18 @@ onMounted(() => {
     <!-- Content -->
     <div class="content" @click.self="selectedIds.clear()">
       <div v-if="docStore.loading" class="loading-state">
-        <Loader2 class="h-8 w-8 animate-spin" />
-        <p>{{ t('common.loading') }}</p>
+        <div class="shimmer-grid">
+          <Shimmer v-for="i in 6" :key="i" height="280px" rounded class="shimmer-card" />
+        </div>
       </div>
       
       <div v-else-if="sortedDocuments.length === 0" class="empty-state">
         <Upload class="h-12 w-12 opacity-20" />
-        <h3>No documents found</h3>
-        <p>Upload your first PDF file to get started</p>
+        <h3>{{ t('common.no_documents') }}</h3>
+        <p>{{ t('upload.drop_text') }}</p>
         <button class="upload-btn-primary" @click="emit('upload')">
           <Upload class="h-4 w-4" />
-          Upload PDF
+          {{ t('common.upload_pdf') }}
         </button>
       </div>
       
@@ -329,18 +449,28 @@ onMounted(() => {
           :document="doc"
           :selected="selectedIds.has(doc.id)"
           :view-layout="viewLayout"
+          :renaming="renamingDocId === doc.id"
           @click="(e: MouseEvent) => handleCardClick(doc, e)"
           @dblclick="emit('documentOpen', doc)"
           @contextmenu.prevent="(e: MouseEvent) => handleContextMenu(doc, e)"
+          @checkbox-click="handleCheckboxClick"
+          @rename-saved="handleRenameSaved"
+          @rename-canceled="handleRenameCanceled"
         />
       </div>
     </div>
 
-    <ContextMenu 
-      v-model="showContextMenu" 
-      :x="contextMenuX" 
-      :y="contextMenuY" 
+    <ContextMenu
+      v-model="showContextMenu"
+      :x="contextMenuX"
+      :y="contextMenuY"
       :items="contextMenuItems"
+    />
+
+    <MoveDialog
+      v-model:open="showMoveDialog"
+      :selectedIds="selectedIds"
+      @moved="handleMoveComplete"
     />
   </div>
 </template>
@@ -369,10 +499,16 @@ onMounted(() => {
 
 .toolbar-right { display: flex; align-items: center; gap: 0.75rem; }
 
-.search-box { position: relative; }
-.search-box .h-4 { position: absolute; left: 0.75rem; top: 0.6rem; color: hsl(var(--muted-foreground)); }
-.search-input { width: 200px; padding: 0.5rem 0.75rem 0.5rem 2.25rem; border: 1px solid hsl(var(--border)); border-radius: 0.375rem; background-color: hsl(var(--background)); color: hsl(var(--foreground)); font-size: 0.875rem; }
-.search-input:focus { outline: none; border-color: hsl(var(--primary)); box-shadow: 0 0 0 2px hsl(var(--primary) / 0.1); }
+.toolbar-filters { display: flex; gap: 0.5rem; }
+.filter-select {
+  padding: 0.375rem 0.5rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.25rem;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-size: 0.8125rem;
+}
+.filter-select:focus { outline: none; border-color: hsl(var(--primary)); }
 
 .view-controls { display: flex; border: 1px solid hsl(var(--border)); border-radius: 0.375rem; overflow: hidden; }
 .view-btn { display: flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; border: none; background-color: hsl(var(--background)); color: hsl(var(--muted-foreground)); cursor: pointer; transition: all 0.15s ease; }
@@ -387,35 +523,77 @@ onMounted(() => {
 /* Batch Actions Bar */
 .batch-actions-bar {
   position: absolute;
-  top: 4rem; /* Below toolbar */
+  top: calc(60px + 0.75rem);
   left: 50%;
   transform: translateX(-50%);
   background-color: hsl(var(--primary));
   color: hsl(var(--primary-foreground));
   border-radius: 9999px;
-  padding: 0.5rem 1rem;
+  padding: 0.375rem 1rem;
   display: flex;
   align-items: center;
-  gap: 1.5rem;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  gap: 1rem;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
   z-index: 20;
   animation: slide-in 0.2s ease-out;
 }
 
 @keyframes slide-in { from { transform: translate(-50%, -10px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
 
-.batch-left, .batch-right { display: flex; align-items: center; gap: 0.75rem; }
-.close-selection-btn { background: none; border: none; cursor: pointer; color: hsl(var(--primary-foreground) / 0.8); }
-.close-selection-btn:hover { color: hsl(var(--primary-foreground)); }
-.selection-count { font-size: 0.875rem; font-weight: 500; }
-.select-all-btn { background: none; border: none; cursor: pointer; color: hsl(var(--primary-foreground) / 0.8); font-size: 0.875rem; text-decoration: underline; }
+.batch-left, .batch-right { display: flex; align-items: center; gap: 0.5rem; }
+.selection-count { font-size: 0.8125rem; font-weight: 600; white-space: nowrap; }
 
-.batch-btn { display: flex; align-items: center; background-color: hsl(var(--primary-foreground) / 0.1); border: none; padding: 0.375rem 0.75rem; border-radius: 0.25rem; color: hsl(var(--primary-foreground)); font-size: 0.875rem; cursor: pointer; transition: all 0.2s; }
-.batch-btn:hover { background-color: hsl(var(--primary-foreground) / 0.2); }
-.batch-btn.danger { color: #fca5a5; }
-.batch-btn.danger:hover { background-color: rgba(252, 165, 165, 0.2); }
+.batch-action {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  border: none;
+  border-radius: 0.375rem;
+  background-color: hsl(var(--primary-foreground) / 0.15);
+  color: hsl(var(--primary-foreground));
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
 
-.loading-state, .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 1rem; color: hsl(var(--muted-foreground)); }
+.batch-action:hover { background-color: hsl(var(--primary-foreground) / 0.25); }
+.batch-action.danger:hover { background-color: hsl(var(--destructive) / 0.3); color: #fca5a5; }
+
+.batch-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  border-radius: 50%;
+  background-color: hsl(var(--primary-foreground) / 0.1);
+  color: hsl(var(--primary-foreground) / 0.7);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.batch-close:hover { background-color: hsl(var(--primary-foreground) / 0.2); color: hsl(var(--primary-foreground)); }
+
+.loading-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 1rem; color: hsl(var(--muted-foreground)); }
+
+.shimmer-grid {
+  display: grid;
+  gap: 1.5rem;
+  width: 100%;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+
+.shimmer-card {
+  width: 100%;
+}
+
+@media (min-width: 1200px) { .shimmer-grid { grid-template-columns: repeat(3, minmax(200px, 1fr)); } }
+@media (min-width: 1600px) { .shimmer-grid { grid-template-columns: repeat(4, minmax(200px, 1fr)); } }
+@media (min-width: 2000px) { .shimmer-grid { grid-template-columns: repeat(5, minmax(200px, 1fr)); } }
 .empty-state h3 { font-size: 1.125rem; font-weight: 600; color: hsl(var(--foreground)); margin: 0; }
 .empty-state p { font-size: 0.875rem; margin: 0; }
 

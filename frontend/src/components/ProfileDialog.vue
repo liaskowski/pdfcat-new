@@ -5,6 +5,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import client from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
+import { useI18n } from '@/composables/useI18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   open: boolean
@@ -27,6 +30,11 @@ const confirmPassword = ref('')
 // Avatar
 const avatarFile = ref<File | null>(null)
 const avatarPreview = ref<string | null>(auth.user?.avatar_url || null)
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+
+// Editable profile fields
+const username = ref(auth.user?.username || '')
+const email = ref(auth.user?.email || '')
 
 const isOpen = computed({
   get: () => props.open,
@@ -52,10 +60,17 @@ async function handleSaveProfile() {
       await client.post('/users/me/avatar', formData)
       await auth.fetchUser() // Refresh user data
     }
-    // TODO: Add other profile fields if API supports them (e.g. email update)
-    message.value = { type: 'success', text: 'Profile updated successfully' }
-  } catch (e) {
-    message.value = { type: 'error', text: 'Failed to update profile' }
+
+    // Update username and email
+    await client.patch('/users/me', {
+      username: username.value,
+      email: email.value,
+    })
+
+    await auth.fetchUser() // Refresh
+    message.value = { type: 'success', text: t('profile.profile_updated') }
+  } catch (e: any) {
+    message.value = { type: 'error', text: t('profile.profile_update_failed') }
   } finally {
     isSaving.value = false
   }
@@ -63,26 +78,24 @@ async function handleSaveProfile() {
 
 async function handleChangePassword() {
   if (newPassword.value !== confirmPassword.value) {
-    message.value = { type: 'error', text: 'Passwords do not match' }
+    message.value = { type: 'error', text: t('auth.passwords_no_match') }
     return
   }
-  
+
   isSaving.value = true
   message.value = null
   try {
-    // Assuming backend endpoint for password change exists or needs to be added
-    // For now we use a hypothetical endpoint based on standard practices
     await client.post('/users/me/password', {
       old_password: oldPassword.value,
       new_password: newPassword.value
     })
-    
-    message.value = { type: 'success', text: 'Password changed successfully' }
+
+    message.value = { type: 'success', text: t('profile.password_changed') }
     oldPassword.value = ''
     newPassword.value = ''
     confirmPassword.value = ''
   } catch (e: any) {
-    message.value = { type: 'error', text: e.response?.data?.detail || 'Failed to change password' }
+    message.value = { type: 'error', text: e.response?.data?.detail || t('profile.password_change_failed') }
   } finally {
     isSaving.value = false
   }
@@ -99,7 +112,7 @@ function handleClose() {
   <div v-if="isOpen" class="modal-overlay" @click.self="handleClose">
     <div class="modal-content">
       <div class="modal-header">
-        <h2 class="modal-title">User Settings</h2>
+        <h2 class="modal-title">{{ t('profile.title') }}</h2>
         <button class="close-btn" @click="handleClose">
           <X class="h-4 w-4" />
         </button>
@@ -107,21 +120,21 @@ function handleClose() {
 
       <div class="modal-body">
         <div class="tabs">
-          <button 
-            class="tab-btn" 
+          <button
+            class="tab-btn"
             :class="{ active: activeTab === 'profile' }"
             @click="activeTab = 'profile'"
           >
             <User class="h-4 w-4 mr-2" />
-            Profile
+            {{ t('profile.profile_tab') }}
           </button>
-          <button 
-            class="tab-btn" 
+          <button
+            class="tab-btn"
             :class="{ active: activeTab === 'security' }"
             @click="activeTab = 'security'"
           >
             <Lock class="h-4 w-4 mr-2" />
-            Security
+            {{ t('profile.security_tab') }}
           </button>
         </div>
 
@@ -135,10 +148,10 @@ function handleClose() {
         <div v-if="activeTab === 'profile'" class="tab-content">
           <div class="avatar-section">
             <div class="avatar-preview">
-              <img 
-                v-if="avatarPreview" 
-                :src="avatarPreview.startsWith('blob') ? avatarPreview : `http://localhost:8000/${avatarPreview}`" 
-                alt="Avatar" 
+              <img
+                v-if="avatarPreview"
+                :src="avatarPreview.startsWith('blob') ? avatarPreview : `${API_BASE_URL}/${avatarPreview}`"
+                alt="Avatar"
                 class="avatar-img"
               />
               <div v-else class="avatar-placeholder">
@@ -147,27 +160,27 @@ function handleClose() {
             </div>
             <div class="avatar-actions">
               <label class="btn-outline">
-                Change Avatar
+                {{ t('profile.change_avatar') }}
                 <input type="file" accept="image/*" class="hidden" @change="handleAvatarChange" />
               </label>
             </div>
           </div>
 
           <div class="form-group">
-            <label class="form-label">Username</label>
-            <Input :model-value="auth.user?.username" disabled />
+            <label class="form-label">{{ t('profile.username') }}</label>
+            <Input v-model="username" :placeholder="t('profile.username')" />
           </div>
-          
+
           <div class="form-group">
-            <label class="form-label">Email</label>
-            <Input :model-value="auth.user?.email" disabled />
+            <label class="form-label">{{ t('profile.email') }}</label>
+            <Input v-model="email" type="email" :placeholder="t('profile.email')" />
           </div>
 
           <div class="actions">
             <Button @click="handleSaveProfile" :disabled="isSaving">
               <Loader2 v-if="isSaving" class="h-4 w-4 mr-2 animate-spin" />
               <Save v-else class="h-4 w-4 mr-2" />
-              Save Changes
+              {{ t('profile.save_changes') }}
             </Button>
           </div>
         </div>
@@ -175,17 +188,17 @@ function handleClose() {
         <!-- Security Tab -->
         <div v-if="activeTab === 'security'" class="tab-content">
           <div class="form-group">
-            <label class="form-label">Current Password</label>
+            <label class="form-label">{{ t('profile.current_password') }}</label>
             <Input v-model="oldPassword" type="password" />
           </div>
-          
+
           <div class="form-group">
-            <label class="form-label">New Password</label>
+            <label class="form-label">{{ t('profile.new_password') }}</label>
             <Input v-model="newPassword" type="password" />
           </div>
-          
+
           <div class="form-group">
-            <label class="form-label">Confirm New Password</label>
+            <label class="form-label">{{ t('profile.confirm_password') }}</label>
             <Input v-model="confirmPassword" type="password" />
           </div>
 
@@ -193,7 +206,7 @@ function handleClose() {
             <Button @click="handleChangePassword" :disabled="isSaving || !oldPassword || !newPassword">
               <Loader2 v-if="isSaving" class="h-4 w-4 mr-2 animate-spin" />
               <Save v-else class="h-4 w-4 mr-2" />
-              Change Password
+              {{ t('profile.change_password_btn') }}
             </Button>
           </div>
         </div>

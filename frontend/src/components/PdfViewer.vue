@@ -5,6 +5,9 @@ import {
   Sidebar, Grid, FileText, Search, Loader2
 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
+import { useI18n } from '@/composables/useI18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   documentId?: number
@@ -21,7 +24,8 @@ const pdfUrl = computed(() => {
   if (props.src) return props.src
   if (props.documentId) {
     const token = localStorage.getItem('token')
-    return `http://localhost:8000/documents/${props.documentId}/download?token=${token}`
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+    return `${API_BASE_URL}/documents/${props.documentId}/download?token=${token}`
   }
   return ''
 })
@@ -85,11 +89,11 @@ onUnmounted(() => window.removeEventListener('keydown', handleKeydown))
     <!-- Toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <Button variant="ghost" size="sm" @click="emit('close')" title="Back">
-          <ChevronLeft class="h-4 w-4 mr-2" /> Back
+        <Button variant="ghost" size="sm" @click="emit('close')" :title="t('common.back')">
+          <ChevronLeft class="h-4 w-4 mr-2" /> {{ t('common.back') }}
         </Button>
         <div class="divider"></div>
-        <Button variant="ghost" size="sm" @click="toggleSidebar" :class="{ 'active': isSidebarOpen }" title="Toggle Sidebar">
+        <Button variant="ghost" size="sm" @click="toggleSidebar" :class="{ 'active': isSidebarOpen }" :title="t('viewer.toggle_sidebar')">
           <Sidebar class="h-4 w-4" />
         </Button>
       </div>
@@ -103,13 +107,13 @@ onUnmounted(() => window.removeEventListener('keydown', handleKeydown))
       </div>
       
       <div class="toolbar-right">
-        <Button variant="ghost" size="sm" @click="handleRotate" title="Rotate">
+        <Button variant="ghost" size="sm" @click="handleRotate" :title="t('viewer.rotate')">
           <RotateCw class="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="sm" @click="handleDownload" title="Download">
+        <Button variant="ghost" size="sm" @click="handleDownload" :title="t('common.download')">
           <Download class="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="sm" @click="handleFullscreen" title="Fullscreen">
+        <Button variant="ghost" size="sm" @click="handleFullscreen" :title="t('viewer.fullscreen')">
           <Maximize class="h-4 w-4" />
         </Button>
       </div>
@@ -137,13 +141,13 @@ onUnmounted(() => window.removeEventListener('keydown', handleKeydown))
         <div v-if="isLoading" class="loading-overlay">
           <div class="loading-box">
             <Loader2 class="h-10 w-10 animate-spin text-primary" />
-            <p class="mt-4 text-lg font-medium text-foreground">Ładowanie dokumentu...</p>
+            <p class="mt-4 text-lg font-medium text-foreground">{{ t('viewer.loading_document') }}</p>
           </div>
         </div>
 
         <div v-if="isError" class="state-msg error">
-          Failed to load PDF
-          <Button variant="outline" size="sm" @click="() => { isError = false; isLoading = true }">Retry</Button>
+          {{ t('viewer.failed') }}
+          <Button variant="outline" size="sm" @click="() => { isError = false; isLoading = true }">{{ t('common.retry') }}</Button>
         </div>
         
         <div class="iframe-wrapper" :style="{ transform: `scale(${scale / 100}) rotate(${rotation}deg)` }">

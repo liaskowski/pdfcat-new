@@ -2,9 +2,13 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import {
   ChevronLeft,
+  ChevronRight,
   Shield,
   ShieldAlert,
-  Loader2
+  Loader2,
+  ZoomIn,
+  ZoomOut,
+  RotateCw
 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { VuePDFjs } from '@tuttarealstep/vue-pdf.js'
@@ -14,6 +18,8 @@ import { useI18n } from '@/composables/useI18n'
 // Import localization files using the exported subpath
 import enUS_FTL from '@tuttarealstep/vue-pdf.js/l10n/en-US/viewer.ftl?raw'
 import pl_FTL from '@tuttarealstep/vue-pdf.js/l10n/pl/viewer.ftl?raw'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   documentId?: number
@@ -30,7 +36,10 @@ const { locale: appLocale } = useI18n()
 // State
 const isLoading = ref(true)
 const renderError = ref<string | null>(null)
-const totalPages = ref(0)
+const currentPage = ref(1)
+const totalPagesCount = ref(1)
+const scale = ref(1.0)
+const rotation = ref(0)
 
 // Security info
 const securityInfo = ref({
@@ -85,9 +94,9 @@ const viewerOptions = ref({
   toolbar: {
     options: {
       openFileButton: false,
-      printButton: false, // Security: disabled
-      downloadButton: false, // Security: disabled
-      viewBookmarkButton: true,
+      printButton: false,
+      downloadButton: false,
+      viewBookmarkButton: false,
       editorFreeTextButton: false,
       editorInkButton: false,
     }
@@ -109,12 +118,36 @@ function syncLocale() {
   }
 }
 
-function onPdfLoaded(pdfApp: any) {
-  console.log('[PDF Viewer] PDF App Loaded')
+function onPdfLoaded() {
   isLoading.value = false
-  if (pdfApp.pdfDocument) {
-    totalPages.value = pdfApp.pdfDocument.numPages
-  }
+  hideToolbarButtons()
+}
+
+function hideToolbarButtons() {
+  setTimeout(() => {
+    // Try multiple possible toolbar selectors
+    const containers = document.querySelectorAll('.pdf-app .toolbar, .pdf-app #toolbarViewer, .pdf-app .secondaryToolbar')
+    containers.forEach(container => {
+      const buttons = container.querySelectorAll('button, .toolbarButton, [role="button"]')
+      buttons.forEach(btn => {
+        const el = btn as HTMLElement
+        const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase()
+        const title = (el.getAttribute('title') || '').toLowerCase()
+        const dataId = (el.getAttribute('data-l10n-id') || '').toLowerCase()
+        const id = (el.id || '').toLowerCase()
+
+        const isTarget =
+          id.includes('open') || id.includes('print') ||
+          dataId.includes('open') || dataId.includes('print') ||
+          ariaLabel.includes('open file') || ariaLabel.includes('print') ||
+          title.includes('open') || title.includes('print')
+
+        if (isTarget) {
+          el.style.display = 'none'
+        }
+      })
+    })
+  }, 300)
 }
 
 function onPdfError(error: any) {
@@ -123,11 +156,12 @@ function onPdfError(error: any) {
   isLoading.value = false
 }
 
-// Security: Block right-click and save/print shortcuts
-function blockSecurityEvents(e: Event) {
-  e.preventDefault()
-  return false
-}
+function zoomIn() { scale.value = Math.min(scale.value + 0.2, 3.0) }
+function zoomOut() { scale.value = Math.max(scale.value - 0.2, 0.5) }
+function handleReload() { isLoading.value = true; setTimeout(() => { isLoading.value = false }, 2000) }
+function handleRotate() { rotation.value = (rotation.value + 90) % 360 }
+function prevPage() { if (currentPage.value > 1) currentPage.value-- }
+function nextPage() { if (currentPage.value < totalPagesCount.value) currentPage.value++ }
 
 function handleKeydown(e: KeyboardEvent) {
   // Block Ctrl+S (Save) and Ctrl+P (Print)
@@ -163,12 +197,23 @@ onMounted(() => {
     securityCheck()
   }
   window.addEventListener('keydown', handleKeydown)
-  window.addEventListener('contextmenu', blockSecurityEvents)
+
+  // Watch for PDF.js toolbar buttons appearing and hide Open/Print
+  const observer = new MutationObserver(() => {
+    hideToolbarButtons()
+  })
+  // Wait for PDF.js to render, then start observing
+  setTimeout(() => {
+    hideToolbarButtons()
+    const target = document.querySelector('.pdf-app')
+    if (target) {
+      observer.observe(target, { childList: true, subtree: true })
+    }
+  }, 1000)
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
-  window.removeEventListener('contextmenu', blockSecurityEvents)
 })
 </script>
 
@@ -200,7 +245,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Main Viewer -->
-    <div class="viewer-wrapper">
+    <div class="viewer-wrapper" @contextmenu.prevent>
       <!-- Centered Loading State -->
       <div v-if="isLoading && !renderError" class="loading-overlay">
         <div class="loading-box">
@@ -224,7 +269,31 @@ onUnmounted(() => {
         @pdf-app:loaded="onPdfLoaded"
         @pdf-app:error="onPdfError"
         class="pdf-app"
+        :style="{ transform: `rotate(${rotation}deg)`, transition: 'transform 0.2s ease' }"
       />
+
+      <!-- Custom Toolbar -->
+      <div v-if="!renderError" class="custom-toolbar">
+        <button @click="zoomOut" title="Zoom Out"><ZoomOut class="h-4 w-4" /></button>
+        <span class="zoom-label">{{ Math.round(scale * 100) }}%</span>
+        <button @click="zoomIn" title="Zoom In"><ZoomIn class="h-4 w-4" /></button>
+        <div class="toolbar-divider"></div>
+        <button @click="handleRotate" :title="t('viewer.rotate') || 'Rotate'">
+          <RotateCw class="h-4 w-4" :style="{ transform: `rotate(${rotation}deg)` }" />
+        </button>
+        <div class="toolbar-divider"></div>
+        <button @click="prevPage" :disabled="currentPage <= 1" :title="t('viewer.prev_page') || 'Previous Page'">
+          <ChevronLeft class="h-4 w-4" />
+        </button>
+        <span class="page-info">{{ currentPage }} / {{ totalPagesCount }}</span>
+        <button @click="nextPage" :disabled="currentPage >= totalPagesCount" :title="t('viewer.next_page') || 'Next Page'">
+          <ChevronRight class="h-4 w-4" />
+        </button>
+        <div class="toolbar-divider"></div>
+        <button @click="handleReload" title="Reload">
+          <RotateCw class="h-4 w-4" />
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -233,6 +302,8 @@ onUnmounted(() => {
 .pdf-viewer-container {
   display: flex;
   flex-direction: column;
+  height: 100dvh;
+  height: -webkit-fill-available;
   height: 100vh;
   width: 100vw;
   background-color: hsl(var(--background));
@@ -331,6 +402,17 @@ onUnmounted(() => {
   height: 100% !important;
 }
 
+/* Hide Open and Print buttons in VuePDFjs/PDF.js toolbar */
+/* PDF.js uses these IDs for toolbar buttons */
+:deep(.pdf-app #toolbarViewer #openFile),
+:deep(.pdf-app #toolbarViewer #print),
+:deep(.pdf-app .toolbarButton[aria-label*="Open"]),
+:deep(.pdf-app .toolbarButton[aria-label*="Print"]),
+:deep(.pdf-app .toolbarButton[data-l10n-id*="open"]),
+:deep(.pdf-app .toolbarButton[data-l10n-id*="print"]) {
+  display: none !important;
+}
+
 /* Security: try to hide scrollbars or UI elements that could be used for bypass */
 :deep(.pdf-app .toolbar) {
   user-select: none;
@@ -339,5 +421,58 @@ onUnmounted(() => {
 /* Fix for potential z-index issues with tooltips */
 :deep(.pdf-app .tooltip) {
   z-index: 10000;
+}
+
+/* Custom Toolbar */
+.custom-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  background-color: hsl(var(--background));
+  border-top: 1px solid hsl(var(--border));
+}
+
+.custom-toolbar button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid hsl(var(--border));
+  background: transparent;
+  color: hsl(var(--foreground));
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+
+.custom-toolbar button:hover {
+  background-color: hsl(var(--accent));
+}
+
+.zoom-label {
+  font-size: 0.75rem;
+  color: hsl(var(--muted-foreground));
+  min-width: 3rem;
+  text-align: center;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 1.25rem;
+  background-color: hsl(var(--border));
+}
+
+.page-info {
+  font-size: 0.75rem;
+  color: hsl(var(--muted-foreground));
+  min-width: 4rem;
+  text-align: center;
+}
+
+.custom-toolbar button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
 }
 </style>

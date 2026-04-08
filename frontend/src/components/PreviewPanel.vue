@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { 
-  Calendar, FileText, User, Download, Trash2, Edit, ExternalLink, 
-  Tag, Folder, FileType, Pencil, History, Copy, CheckCircle, X, Loader2
+import {
+  Calendar, FileText, User, Download, Trash2, Edit, ExternalLink,
+  Tag, Folder, FileType, Pencil, History, CheckCircle, X, Loader2
 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { useDocumentStore, type Document, type FileHistory } from '@/stores/documents'
@@ -26,11 +26,24 @@ const docStore = useDocumentStore()
 const { t } = useI18n()
 const history = ref<FileHistory[]>([])
 const isLoadingHistory = ref(false)
+const isPdfLoading = ref(false)
 const activeTab = ref<'info' | 'history'>('info')
+
+const previewImageUrl = computed(() => {
+  if (!props.document) return ''
+  const token = localStorage.getItem('token')
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+  return `${API_BASE_URL}/documents/${props.document.id}/preview?token=${token}`
+})
+
+function onPreviewImageError() {
+  isPdfLoading.value = false
+}
 
 watch(() => props.document, async (newDoc) => {
   if (newDoc) {
     activeTab.value = 'info'
+    isPdfLoading.value = true
     isLoadingHistory.value = true
     try {
       history.value = await docStore.fetchDocumentHistory(newDoc.id)
@@ -39,13 +52,24 @@ watch(() => props.document, async (newDoc) => {
     } finally {
       isLoadingHistory.value = false
     }
+
+    // Fallback: reset loading after 3s if VuePDFjs doesn't fire loaded event
+    setTimeout(() => {
+      if (isPdfLoading.value) {
+        isPdfLoading.value = false
+      }
+    }, 3000)
   } else {
     history.value = []
+    isPdfLoading.value = false
   }
 }, { immediate: true })
 
-const formatDate = (dateString: string) => {
-  return new Date(dateString).toLocaleDateString(undefined, {
+const formatDate = (dateString: string | undefined | null) => {
+  if (!dateString) return '—'
+  const date = new Date(dateString)
+  if (isNaN(date.getTime())) return '—'
+  return date.toLocaleDateString(undefined, {
     year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
   })
 }
@@ -67,23 +91,6 @@ const getTags = computed(() => {
   return props.document.tags.split(',').map(t => t.trim()).filter(t => t)
 })
 
-const getPreviewUrl = computed(() => {
-  if (!props.document) return ''
-  const token = localStorage.getItem('token')
-  return `http://localhost:8000/documents/${props.document.id}/download?token=${token}`
-})
-
-const handleDuplicate = async () => {
-  if (props.document) {
-    try {
-      await docStore.duplicateDocument(props.document.id)
-      alert('Document duplicated successfully')
-    } catch (e) {
-      alert('Failed to duplicate document')
-    }
-  }
-}
-
 const handleTagClick = (tag: string) => emit('tagClick', tag.startsWith('#') ? tag : `#${tag}`)
 const handleEditTags = () => props.document && emit('editTags', props.document)
 const handleOpen = () => props.document && emit('open', props.document)
@@ -103,41 +110,49 @@ const handleClose = () => emit('close')
     </div>
 
     <div class="panel-tabs">
-      <button 
-        class="tab-btn" 
+      <button
+        class="tab-btn"
         :class="{ active: activeTab === 'info' }"
         @click="activeTab = 'info'"
       >
-        Info
+        {{ t('common.info') }}
       </button>
-      <button 
-        class="tab-btn" 
+      <button
+        class="tab-btn"
         :class="{ active: activeTab === 'history' }"
         @click="activeTab = 'history'"
       >
-        History
+        {{ t('common.history') }}
       </button>
     </div>
 
     <div class="panel-content">
       <div v-if="activeTab === 'info'" class="tab-pane info-pane">
         <div class="preview-container">
-          <iframe v-if="getPreviewUrl" :src="getPreviewUrl" class="preview-frame" />
+          <div v-if="isPdfLoading" class="pdf-loading-state">
+            <Loader2 class="h-8 w-8 animate-spin" />
+            <p>{{ t('viewer.loading_pdf') }}</p>
+          </div>
+          <img
+            v-else-if="previewImageUrl"
+            :src="previewImageUrl"
+            alt="Document preview"
+            class="preview-image"
+            @load="isPdfLoading = false"
+            @error="onPreviewImageError"
+          />
           <div v-else class="preview-placeholder">
-            <FileText class="h-12 w-12 opacity-20" />
+            <FileText class="h-12 w-12 opacity-50" />
             <p>{{ t('common.loading') }}</p>
           </div>
         </div>
 
         <div class="preview-actions">
           <Button @click="handleOpen" variant="default" size="sm" class="flex-1">
-            <ExternalLink class="h-4 w-4 mr-2" /> {{ t('common.open') || 'Open' }}
+            <ExternalLink class="h-4 w-4 mr-2" /> {{ t('common.open') }}
           </Button>
           <Button @click="handleDownload" variant="outline" size="sm" :title="t('common.download')">
             <Download class="h-4 w-4" />
-          </Button>
-          <Button @click="handleDuplicate" variant="outline" size="sm" title="Duplicate">
-            <Copy class="h-4 w-4" />
           </Button>
           <Button @click="handleEdit" variant="outline" size="sm" :title="t('common.edit')">
             <Edit class="h-4 w-4" />
@@ -188,8 +203,8 @@ const handleClose = () => emit('close')
             <div class="metadata-item">
               <CheckCircle class="h-4 w-4" :class="document.ocr_status === 'completed' ? 'text-success' : 'text-muted-foreground'" />
               <div class="metadata-content">
-                <span class="metadata-label">OCR Status</span>
-                <span class="metadata-value capitalize">{{ document.ocr_status || 'not started' }}</span>
+                <span class="metadata-label">{{ t('document.ocr_status') }}</span>
+                <span class="metadata-value capitalize">{{ document.ocr_status === 'completed' ? t('document.ocr_completed') : t('document.ocr_not_started') }}</span>
               </div>
             </div>
           </div>
@@ -206,7 +221,7 @@ const handleClose = () => emit('close')
               #{{ tag.startsWith('#') ? tag.slice(1) : tag }}
             </button>
           </div>
-          <p v-else class="no-tags">No tags yet.</p>
+          <p v-else class="no-tags">{{ t('document.no_tags') }}</p>
         </div>
 
         <div v-if="document.notes" class="notes-section">
@@ -222,16 +237,16 @@ const handleClose = () => emit('close')
         <div v-else-if="history.length > 0" class="history-list">
           <div v-for="item in history" :key="item.id" class="history-item">
             <div class="history-header">
-              <span class="version-badge">v{{ item.version }}</span>
+              <span class="version-badge">v{{ item.version ?? '—' }}</span>
               <span class="history-date">{{ formatDate(item.change_date) }}</span>
             </div>
-            <p class="history-user">Changed by: {{ item.changed_by }}</p>
+            <p class="history-user">{{ item.changed_by || '—' }}</p>
             <p v-if="item.notes" class="history-notes">{{ item.notes }}</p>
           </div>
         </div>
         <div v-else class="empty-history">
           <History class="h-12 w-12 opacity-20" />
-          <p>No history available</p>
+          <p>{{ t('document.no_history') }}</p>
         </div>
       </div>
     </div>
@@ -239,8 +254,8 @@ const handleClose = () => emit('close')
   <div v-else class="preview-panel empty">
     <div class="empty-content">
       <FileText class="h-16 w-16 opacity-20" />
-      <h3>No document selected</h3>
-      <p>Select a document to view its details</p>
+      <h3>{{ t('viewer.not_selected_title') }}</h3>
+      <p>{{ t('viewer.not_selected_hint') }}</p>
     </div>
   </div>
 </template>
@@ -307,6 +322,7 @@ const handleClose = () => emit('close')
   flex: 1;
   overflow-y: auto;
   padding: 1rem;
+  position: relative;
 }
 
 .tab-pane {
@@ -317,12 +333,30 @@ const handleClose = () => emit('close')
 
 .preview-container {
   aspect-ratio: 3/4;
+  max-height: 40vh;
   background-color: hsl(var(--muted));
   border-radius: 0.5rem;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
+}
+
+.pdf-loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.preview-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background-color: hsl(var(--muted));
+  border-radius: 0.5rem;
 }
 
 .preview-frame { width: 100%; height: 100%; border: none; }
