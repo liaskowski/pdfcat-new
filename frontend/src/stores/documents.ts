@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, shallowRef } from 'vue'
 import client from '@/api/client'
 
 export interface Category {
@@ -14,11 +14,14 @@ export interface FileType {
 
 export interface FileHistory {
   id: number
-  version: number
-  filename: string
-  change_date: string
-  changed_by: string
-  notes?: string
+  document_id: number
+  changed_by_id: number
+  changed_by_username: string
+  change_type: string
+  field_changed: string | null
+  old_value: string
+  new_value: string
+  changed_at: string
 }
 
 export interface Document {
@@ -56,7 +59,7 @@ export interface Folder {
 }
 
 export const useDocumentStore = defineStore('documents', () => {
-  const documents = ref<Document[]>([])
+  const documents = shallowRef<Document[]>([])
   const folders = ref<Folder[]>([])
   const categories = ref<Category[]>([])
   const fileTypes = ref<FileType[]>([])
@@ -77,8 +80,8 @@ export const useDocumentStore = defineStore('documents', () => {
   })
 
   // Document Methods
-  async function fetchDocuments(viewMode = 'my', folderId: number | null = null, ownerId: number | null = null) {
-    loading.value = true
+  async function fetchDocuments(viewMode = 'my', folderId: number | null = null, ownerId: number | null = null, silent = false) {
+    if (!silent) loading.value = true
     try {
       const { data } = await client.get('/documents/', {
         params: { 
@@ -93,7 +96,7 @@ export const useDocumentStore = defineStore('documents', () => {
       currentFolderId.value = folderId
       currentOwnerId.value = ownerId
     } finally {
-      loading.value = false
+      if (!silent) loading.value = false
     }
   }
 
@@ -106,7 +109,7 @@ export const useDocumentStore = defineStore('documents', () => {
   }
 
   async function updateDocument(documentId: number, data: Partial<Document>) {
-    const { data: updated } = await client.put(`/documents/${documentId}`, data)
+    const { data: updated } = await client.patch(`/documents/${documentId}`, data)
     const index = documents.value.findIndex(d => d.id === documentId)
     if (index !== -1) {
       documents.value[index] = { ...documents.value[index], ...updated }
@@ -183,6 +186,30 @@ export const useDocumentStore = defineStore('documents', () => {
     } catch (error) {
       console.error('Failed to fetch metadata:', error)
     }
+  }
+
+  const allTags = ref<string[]>([])
+
+  async function fetchTags(q = ''): Promise<string[]> {
+    try {
+      const { data } = await client.get('/tags/', { params: { q } })
+      allTags.value = data
+      return data
+    } catch {
+      return []
+    }
+  }
+
+  async function createCategory(name: string) {
+    const { data } = await client.post('/categories/', { name })
+    categories.value.push(data)
+    return data
+  }
+
+  async function createFileType(name: string) {
+    const { data } = await client.post('/file_types/', { name })
+    fileTypes.value.push(data)
+    return data
   }
 
   // Search
@@ -280,6 +307,7 @@ export const useDocumentStore = defineStore('documents', () => {
     folders,
     categories,
     fileTypes,
+    allTags,
     loading, 
     searchQuery,
     currentViewMode,
@@ -296,6 +324,9 @@ export const useDocumentStore = defineStore('documents', () => {
     duplicateDocument,
     fetchDocumentHistory,
     fetchMetadata,
+    fetchTags,
+    createCategory,
+    createFileType,
     searchDocuments,
     getSuggestions,
     advancedFilters,

@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
-import { FileText, Check, Loader2 } from 'lucide-vue-next'
+import { ref, nextTick, computed } from 'vue'
+import { FileText, Check, Loader2, Eye, Download, Edit, Trash2, Copy, FolderInput } from 'lucide-vue-next'
+import ContextMenu from './ui/ContextMenu.vue'
+import { useAuthStore } from '@/stores/auth'
 
 interface Document {
   id: number
@@ -24,6 +26,8 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  click: [event: MouseEvent]
+  dblclick: [event: MouseEvent]
   select: [doc: any]
   open: [doc: any]
   delete: [doc: any]
@@ -31,7 +35,75 @@ const emit = defineEmits<{
   renameSaved: [doc: any, newTitle: string]
   renameCanceled: []
   checkboxClick: [doc: any, event: MouseEvent]
+  download: [doc: any]
+  edit: [doc: any]
+  duplicate: [doc: any]
+  moveTo: [doc: any]
 }>()
+
+const auth = useAuthStore()
+const showContextMenu = ref(false)
+const contextMenuX = ref(0)
+const contextMenuY = ref(0)
+
+const isOwner = computed(() => {
+  return auth.user?.id === props.document.owner_id
+})
+
+const contextMenuItems = computed(() => [
+  {
+    label: 'Open',
+    icon: Eye,
+    action: () => emit('open', props.document)
+  },
+  {
+    label: 'Download',
+    icon: Download,
+    action: () => emit('download', props.document)
+  },
+  { label: '', separator: true },
+  {
+    label: 'Edit',
+    icon: Edit,
+    action: () => emit('edit', props.document),
+    disabled: !isOwner.value
+  },
+  {
+    label: 'Duplicate',
+    icon: Copy,
+    action: () => emit('duplicate', props.document)
+  },
+  {
+    label: 'Move to...',
+    icon: FolderInput,
+    action: () => emit('moveTo', props.document)
+  },
+  { label: '', separator: true },
+  {
+    label: 'Delete',
+    icon: Trash2,
+    action: () => emit('delete', props.document),
+    danger: true,
+    disabled: !isOwner.value
+  }
+])
+
+function handleContextMenu(event: MouseEvent) {
+  event.preventDefault()
+  event.stopPropagation()
+  
+  // Show context menu WITHOUT selecting (avoid checkbox conflict)
+  // User can still select via checkbox if needed
+  
+  // Calculate position relative to viewport (account for scroll)
+  contextMenuX.value = event.clientX
+  contextMenuY.value = event.clientY
+  showContextMenu.value = true
+}
+
+function closeContextMenu() {
+  showContextMenu.value = false
+}
 
 const renameInputRef = ref<HTMLElement | null>(null)
 const renameTitle = ref('')
@@ -84,6 +156,9 @@ const getPreviewUrl = (docId: number) => {
   <div 
     class="document-card"
     :class="{ 'selected': selected, 'list-view': viewLayout === 'list' }"
+    @contextmenu="handleContextMenu"
+    @click="emit('click', $event)"
+    @dblclick="emit('dblclick', $event)"
   >
     <!-- Selection Checkbox (Visible on hover or selected) -->
     <div class="selection-checkbox" :class="{ 'visible': selected }" @click.stop="emit('checkboxClick', document, $event)">
@@ -105,6 +180,22 @@ const getPreviewUrl = (docId: number) => {
         <div class="preview-fallback">
           <FileText class="h-8 w-8 text-muted-foreground opacity-50" />
         </div>
+        
+        <!-- Hover Overlay with Quick Actions -->
+        <div class="card-overlay">
+          <button class="overlay-btn" @click.stop="emit('open', document)" title="Open">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+          <button class="overlay-btn" @click.stop="emit('download', document)" title="Download">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+          </button>
+          <button class="overlay-btn" @click.stop="emit('edit', document)" title="Edit">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+          </button>
+          <button class="overlay-btn" @click.stop="emit('delete', document)" title="Delete">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+          </button>
+        </div>
       </template>
       <template v-else>
         <FileText class="h-5 w-5 text-primary" />
@@ -125,13 +216,11 @@ const getPreviewUrl = (docId: number) => {
         <Loader2 v-if="false" class="h-3 w-3 rename-spinner animate-spin" />
       </div>
       <h3 v-else class="card-title" :title="document.title">{{ document.title }}</h3>
-      
       <div class="card-meta">
         <span class="meta-item date">{{ formatDate(document.upload_date) }}</span>
         <span v-if="document.file_size" class="meta-item size">{{ formatFileSize(document.file_size) }}</span>
         <span v-if="document.owner_username" class="meta-item owner">{{ document.owner_username }}</span>
       </div>
-      
       <div v-if="viewLayout === 'grid' && document.tags" class="card-tags">
         <span 
           v-for="tag in document.tags.split(',').slice(0, 3)" 
@@ -145,7 +234,33 @@ const getPreviewUrl = (docId: number) => {
         </span>
       </div>
     </div>
+    
+    <!-- List View Quick Actions (appear on hover) -->
+    <div v-if="viewLayout === 'list'" class="list-actions">
+      <button class="list-action-btn" @click.stop="emit('open', document)" title="Open">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+      <button class="list-action-btn" @click.stop="emit('download', document)" title="Download">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+      </button>
+      <button class="list-action-btn" @click.stop="emit('edit', document)" title="Edit">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+      </button>
+      <button class="list-action-btn delete" @click.stop="emit('delete', document)" title="Delete">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+      </button>
+    </div>
   </div>
+
+  <!-- Context Menu (rendered OUTSIDE card to avoid overflow:hidden) -->
+  <ContextMenu
+    :model-value="showContextMenu"
+    :x="contextMenuX"
+    :y="contextMenuY"
+    :items="contextMenuItems"
+    @update:model-value="showContextMenu = $event"
+    @close="closeContextMenu"
+  />
 </template>
 
 <style scoped>
@@ -246,6 +361,55 @@ const getPreviewUrl = (docId: number) => {
   justify-content: center;
 }
 
+/* Hover Overlay */
+.card-overlay {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 5;
+}
+
+.document-card:hover .card-overlay {
+  opacity: 1;
+}
+
+.overlay-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: none;
+  border-radius: 50%;
+  background-color: hsl(var(--background) / 0.9);
+  color: hsl(var(--foreground));
+  cursor: pointer;
+  transition: all 0.15s ease;
+  backdrop-filter: blur(4px);
+}
+
+.overlay-btn svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+}
+
+.overlay-btn:hover {
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  transform: scale(1.1);
+}
+
+.overlay-btn:active {
+  transform: scale(0.95);
+}
+
 .document-card:not(.list-view) .card-content {
   padding: 0.75rem;
   display: flex;
@@ -319,12 +483,11 @@ const getPreviewUrl = (docId: number) => {
 }
 
 .list-view .selection-checkbox {
-  position: relative;
-  top: auto;
-  left: auto;
-  margin-right: 0.75rem;
-  grid-column: 1;
-  opacity: 0; /* Only show on hover/select in list too? Or always? Standard is hover */
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: hsl(var(--card));
 }
 
 .document-card.list-view:hover .selection-checkbox,
@@ -332,7 +495,6 @@ const getPreviewUrl = (docId: number) => {
   opacity: 1;
 }
 
-/* Adjust grid if checkbox is hidden */
 .list-view .card-preview {
   grid-column: 1;
   width: 2.5rem;
@@ -344,25 +506,13 @@ const getPreviewUrl = (docId: number) => {
   border-radius: 0.25rem;
 }
 
-/* When checkbox is visible, it might overlap preview in list view or we shift.
-   For simplicity in this CSS grid, let's just overlay checkbox on preview area 
-   or shift content. Overlay is easier.
-*/
-.list-view .selection-checkbox {
-  position: absolute;
-  left: 0.75rem;
-  top: 50%;
-  transform: translateY(-50%);
-  background: hsl(var(--card)); /* To cover icon behind */
-}
-
 .list-view .card-content {
-  grid-column: 2 / -1;
-  display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr;
-  align-items: center;
-  gap: 1rem;
-  padding: 0 1rem;
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0 0.5rem;
+  overflow: hidden;
 }
 
 .list-view .card-title {
@@ -373,8 +523,49 @@ const getPreviewUrl = (docId: number) => {
 }
 
 .list-view .card-meta {
-  display: contents; /* Use grid from parent */
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.7rem;
+  color: hsl(var(--muted-foreground));
 }
 
-.list-view .card-tags { display: none; } /* Hide tags in list for now or add column */
+.list-view .card-tags { display: none; }
+
+/* List View Quick Actions */
+.list-actions {
+  grid-column: 3;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.document-card.list-view:hover .list-actions {
+  opacity: 1;
+}
+
+.list-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: none;
+  border-radius: 0.25rem;
+  background-color: transparent;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.list-action-btn:hover {
+  background-color: hsl(var(--accent));
+  color: hsl(var(--foreground));
+}
+
+.list-action-btn.delete:hover {
+  background-color: hsl(var(--destructive) / 0.2);
+  color: hsl(var(--destructive));
+}
 </style>

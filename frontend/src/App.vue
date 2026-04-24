@@ -1,40 +1,45 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, computed } from 'vue'
+import { ref, onMounted, onUnmounted, watch, computed, defineAsyncComponent } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useDocumentStore } from '@/stores/documents'
 import type { Document } from '@/stores/documents'
 import NavigationTree from '@/components/NavigationTree.vue'
 import FileGrid from '@/components/FileGrid.vue'
 import PreviewPanel from '@/components/PreviewPanel.vue'
-import Breadcrumbs from '@/components/Breadcrumbs.vue'
-import UploadDialog from '@/components/UploadDialog.vue'
-import EditDialog from '@/components/EditDialog.vue'
-import SecurePdfViewer from '@/components/SecurePdfViewer.vue'
 import SearchBar from '@/components/SearchBar.vue'
-import AdminPanel from '@/components/AdminPanel.vue'
-import ProfileDialog from '@/components/ProfileDialog.vue'
-import ForgotPasswordDialog from '@/components/ForgotPasswordDialog.vue'
+import Breadcrumbs from '@/components/Breadcrumbs.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { LogOut, Menu, X, FileText, Shield, Moon, Sun, Languages, User, RefreshCw } from 'lucide-vue-next'
+
+const UploadDialog = defineAsyncComponent(() => import('@/components/UploadDialog.vue'))
+const EditDialog = defineAsyncComponent(() => import('@/components/EditDialog.vue'))
+const EmbedPdfViewer = defineAsyncComponent(() => import('@/components/EmbedPdfViewer.vue'))
+const AdminPanel = defineAsyncComponent(() => import('@/components/AdminPanel.vue'))
+const ProfileDialog = defineAsyncComponent(() => import('@/components/ProfileDialog.vue'))
+const ForgotPasswordDialog = defineAsyncComponent(() => import('@/components/ForgotPasswordDialog.vue'))
+import { LogOut, Menu, X, FileText, Shield, Moon, Sun, User, RefreshCw, ChevronDown } from 'lucide-vue-next'
 import { useI18n } from '@/composables/useI18n'
 import { useAutoRefresh } from '@/composables/useAutoRefresh'
+import { useToast } from '@/composables/useToast'
+import { Toaster } from '@/components/ui/toast'
 
 const auth = useAuthStore()
 const docStore = useDocumentStore()
 const { setLocale, locale, t } = useI18n()
+const toast = useToast()
 
-// Auto-refresh (paused initially, will be controlled after dialogs are declared)
+// Language dropdown
+const showLangDropdown = ref(false)
+
+// Auto-refresh
 const autoRefresh = useAutoRefresh({
+  intervalMs: 30000,
   onRefresh: async () => {
-    await docStore.fetchDocuments(currentViewMode.value, currentFolderId.value, currentOwnerId.value)
+    await docStore.fetchDocuments(currentViewMode.value, currentFolderId.value, currentOwnerId.value, true)
   },
   paused: true,
 })
-
-// Start auto-refresh after setup
-setTimeout(() => autoRefresh.resume(), 5000)
 
 // State
 const username = ref('')
@@ -43,6 +48,7 @@ const isLoggingIn = ref(false)
 const isSidebarOpen = ref(true)
 const isPreviewOpen = ref(true)
 const showUploadDialog = ref(false)
+const uploadDialogFiles = ref<File[]>([])
 const showEditDialog = ref(false)
 const showPdfViewer = ref(false)
 const showAdminPanel = ref(false)
@@ -80,12 +86,12 @@ function toggleTheme() {
 }
 
 const locales = ['en', 'ru', 'pl']
-const localeNames: Record<string, string> = { en: 'EN', ru: 'RU', pl: 'PL' }
+const localeNames: Record<string, string> = { en: 'English', ru: 'Русский', pl: 'Polski' }
+const localeFlags: Record<string, string> = { en: '🇺🇸', ru: '🇷🇺', pl: '🇵🇱' }
 
-function toggleLanguage() {
-  const currentIndex = locales.indexOf(locale.value)
-  const nextIndex = (currentIndex + 1) % locales.length
-  setLocale(locales[nextIndex])
+function selectLanguage(lang: string) {
+  setLocale(lang)
+  showLangDropdown.value = false
 }
 
 // Navigation state
@@ -103,8 +109,10 @@ async function handleLogin() {
   try {
     await auth.login(username.value, password.value)
     await docStore.fetchDocuments('my')
-  } catch (e) {
-    alert('Login failed')
+    toast.success('Login successful!', 'Welcome')
+  } catch (e: any) {
+    const msg = e?.response?.data?.detail || 'Login failed'
+    toast.error(msg, 'Authentication Error')
   } finally {
     isLoggingIn.value = false
   }
@@ -149,9 +157,15 @@ function handleDocumentOpen(doc: any) {
 function handleDocumentDelete(doc: any) {
   if (confirm(`Are you sure you want to delete "${doc.title}"?`)) {
     docStore.deleteDocument(doc.id)
-    if (selectedDocument.value?.id === doc.id) {
-      selectedDocument.value = null
-    }
+      .then(() => {
+        toast.success(`Document "${doc.title}" deleted`)
+        if (selectedDocument.value?.id === doc.id) {
+          selectedDocument.value = null
+        }
+      })
+      .catch((e: any) => {
+        toast.error(e?.response?.data?.detail || 'Failed to delete document')
+      })
   }
 }
 
@@ -171,11 +185,68 @@ function handleTagClick(tag: string) {
 }
 
 function handleUploadComplete() {
+  toast.success('Documents uploaded successfully')
   docStore.fetchDocuments(currentViewMode.value, currentFolderId.value, currentOwnerId.value)
+}
+
+function handleFileDrop(files: FileList) {
+  showUploadDialog.value = true
+  uploadDialogFiles.value = Array.from(files).filter(f => f.name.endsWith('.pdf'))
 }
 
 function handleEditSaved() {
   docStore.fetchDocuments(currentViewMode.value, currentFolderId.value, currentOwnerId.value)
+}
+
+function handleDocumentDuplicate(doc: any) {
+  docStore.duplicateDocument(doc.id, currentFolderId.value ?? undefined)
+    .then(() => {
+      toast.success('Document duplicated')
+      docStore.fetchDocuments(currentViewMode.value, currentFolderId.value, currentOwnerId.value)
+    })
+    .catch((e: any) => {
+      toast.error(e?.response?.data?.detail || 'Failed to duplicate document')
+    })
+}
+
+function handleDocumentMove(doc: any, targetFolderId: number | null) {
+  docStore.updateDocument(doc.id, { folder_id: targetFolderId })
+    .then(() => {
+      toast.success('Document moved')
+      docStore.fetchDocuments(currentViewMode.value, currentFolderId.value, currentOwnerId.value)
+    })
+    .catch((e: any) => {
+      toast.error(e?.response?.data?.detail || 'Failed to move document')
+    })
+}
+
+async function handleDocumentDownload(doc: any) {
+  const token = localStorage.getItem('token')
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+  const url = `${API_BASE_URL}/documents/${doc.id}/download?token=${token}&download=true`
+  
+  try {
+    // Fetch the file as blob (avoids cross-origin download issues)
+    const response = await fetch(url)
+    if (!response.ok) throw new Error('Download failed')
+    
+    const blob = await response.blob()
+    const blobUrl = URL.createObjectURL(blob)
+    
+    // Create temporary link to trigger download
+    const a = document.createElement('a')
+    a.href = blobUrl
+    a.download = doc.filename || `${doc.title}.pdf`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    
+    // Clean up blob URL
+    URL.revokeObjectURL(blobUrl)
+  } catch (error) {
+    console.error('Download error:', error)
+    alert('Ошибка при скачивании файла')
+  }
 }
 
 function toggleSidebar() {
@@ -206,10 +277,27 @@ onMounted(async () => {
     pathSegments.value = [{ label: t('nav.my_documents'), viewMode: 'my' }]
   }
 })
+
+// Close dropdown when clicking outside
+function handleClickOutside(event: MouseEvent) {
+  const target = event.target as HTMLElement
+  if (!target.closest('.lang-dropdown') && !target.closest('.lang-btn')) {
+    showLangDropdown.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
 </script>
 
 <template>
   <div class="min-h-screen bg-background font-sans antialiased">
+    <Toaster />
     <!-- Login View -->
     <div v-if="!auth.isAuthenticated" class="flex items-center justify-center min-h-screen">
       <Card class="w-87.5">
@@ -280,15 +368,30 @@ onMounted(async () => {
             <Sun v-if="isDark" class="h-4 w-4" />
             <Moon v-else class="h-4 w-4" />
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            @click="toggleLanguage"
-            :title="`Switch to ${localeNames[locales[(locales.indexOf(locale) + 1) % locales.length]]}`"
-          >
-            <Languages class="h-4 w-4" />
-            <span class="ml-1 text-xs">{{ localeNames[locale] }}</span>
-          </Button>
+          <div class="lang-wrapper">
+            <Button
+              variant="ghost"
+              size="sm"
+              @click="showLangDropdown = !showLangDropdown"
+              class="lang-btn"
+            >
+              <span class="lang-flag">{{ localeFlags[locale] }}</span>
+              <span class="lang-name">{{ localeNames[locale] }}</span>
+              <ChevronDown class="h-3 w-3 ml-1" />
+            </Button>
+            <div v-if="showLangDropdown" class="lang-dropdown">
+              <button
+                v-for="lang in locales"
+                :key="lang"
+                class="lang-option"
+                :class="{ active: locale === lang }"
+                @click="selectLanguage(lang)"
+              >
+                <span class="lang-flag">{{ localeFlags[lang] }}</span>
+                <span>{{ localeNames[lang] }}</span>
+              </button>
+            </div>
+          </div>
           <Button 
             v-if="auth.user?.is_superuser" 
             variant="ghost" 
@@ -339,9 +442,14 @@ onMounted(async () => {
             :ownerId="currentOwnerId"
             :searchQuery="docStore.searchQuery"
             @upload="showUploadDialog = true"
+            @uploadFiles="handleFileDrop"
             @documentSelect="handleDocumentSelect"
             @documentOpen="handleDocumentOpen"
+            @documentDownload="handleDocumentDownload"
             @documentDelete="handleDocumentDelete"
+            @documentEdit="handleDocumentEdit"
+            @documentDuplicate="handleDocumentDuplicate"
+            @documentMove="handleDocumentMove"
           />
         </main>
 
@@ -353,7 +461,7 @@ onMounted(async () => {
           <PreviewPanel
             :document="selectedDocument"
             @open="handleDocumentOpen"
-            @download="handleDocumentOpen"
+            @download="handleDocumentDownload"
             @delete="handleDocumentDelete"
             @edit="handleDocumentEdit"
             @editTags="handleEditTags"
@@ -367,7 +475,8 @@ onMounted(async () => {
     <!-- Upload Dialog -->
     <UploadDialog
       v-model:open="showUploadDialog"
-      @uploaded="handleUploadComplete"
+      :files="uploadDialogFiles"
+      @uploaded="() => { uploadDialogFiles = []; handleUploadComplete() }"
     />
 
     <!-- Edit Dialog -->
@@ -393,7 +502,7 @@ onMounted(async () => {
 
     <!-- PDF Viewer Modal -->
     <div v-if="showPdfViewer && selectedDocument" class="pdf-viewer-modal">
-      <SecurePdfViewer
+      <EmbedPdfViewer
         :documentId="selectedDocument.id"
         :visible="showPdfViewer"
         @close="showPdfViewer = false"
@@ -549,5 +658,63 @@ onMounted(async () => {
   color: hsl(var(--muted-foreground));
   min-width: 3rem;
   text-align: right;
+}
+
+/* Language Dropdown */
+.lang-wrapper {
+  position: relative;
+}
+
+.lang-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.lang-flag {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.lang-name {
+  font-size: 0.75rem;
+}
+
+.lang-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 0.25rem;
+  background-color: hsl(var(--popover));
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 0.25rem;
+  z-index: 100;
+  min-width: 140px;
+}
+
+.lang-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  background: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: hsl(var(--foreground));
+  transition: background-color 0.15s;
+}
+
+.lang-option:hover {
+  background-color: hsl(var(--accent));
+}
+
+.lang-option.active {
+  background-color: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
 }
 </style>

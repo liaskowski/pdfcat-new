@@ -5,6 +5,7 @@ import client from '@/api/client'
 import { Folder, FileText, Users, Globe, ChevronRight, ChevronDown, Plus, Trash2, User } from 'lucide-vue-next'
 import FolderDialog from './FolderDialog.vue'
 import { useI18n } from '@/composables/useI18n'
+import { useToast } from '@/composables/useToast'
 
 interface PublicUser {
   id: number
@@ -41,6 +42,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const toast = useToast()
 const auth = useAuthStore()
 const navItems = ref<NavItem[]>([])
 const isLoading = ref(false)
@@ -230,7 +232,7 @@ async function handleDeleteFolder(e: Event, folderId: number) {
       await client.delete(`/folders/${folderId}`)
       loadNavigation()
     } catch (e) {
-      alert(t('folder.delete_failed'))
+      toast.error(t('folder.delete_failed'))
     }
   }
 }

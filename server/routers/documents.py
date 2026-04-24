@@ -2,6 +2,7 @@ import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks, Query, Response
 from fastapi.responses import FileResponse
+from sqlalchemy import or_, and_
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -160,6 +161,7 @@ async def download_document(
     db: Session = Depends(get_db),
     token: Optional[str] = Query(None),
     current_user: User = Depends(get_current_active_user),
+    download: bool = Query(False, description="If true, force download instead of inline display"),
 ):
     """
     Download document file (decrypted on-the-fly).
@@ -196,17 +198,18 @@ async def download_document(
         
         # Try to decrypt with empty password if still encrypted
         if pdf_doc.is_encrypted:
+            logger.info(f"PDF {doc.id} is encrypted, attempting to decrypt...")
             passwords = ["", "admin", "password", "document", "file", "123456", "qwerty", "test", "pdf"]
             for pwd in passwords:
                 try:
                     if pdf_doc.authenticate(pwd):
-                        logger.info(f"Successfully decrypted with password: '{pwd}'")
+                        logger.info(f"Successfully decrypted PDF {doc.id} with password: '{pwd}'")
                         break
                 except:
                     continue
             else:
                 # If no password works, return original file as-is
-                logger.warning(f"Could not decrypt PDF {doc.file_path}, returning original file")
+                logger.warning(f"Could not decrypt PDF {doc.file_path} (doc {doc.id}), returning original encrypted file")
                 pdf_doc.close()
                 
                 # Return original file
@@ -217,7 +220,7 @@ async def download_document(
                     content=original_content,
                     media_type="application/pdf",
                     headers={
-                        "Content-Disposition": f"inline; filename=\"{safe_title}.pdf\"; filename*=UTF-8''{encoded_filename}",
+                        "Content-Disposition": f"{'attachment' if download else 'inline'}; filename=\"{safe_title}.pdf\"; filename*=UTF-8''{encoded_filename}",
                         "X-PDF-Status": "encrypted-raw"
                     }
                 )
@@ -232,7 +235,7 @@ async def download_document(
             content=buffer.read(),
             media_type="application/pdf",
             headers={
-                "Content-Disposition": f"inline; filename=\"{safe_title}.pdf\"; filename*=UTF-8''{encoded_filename}"
+                "Content-Disposition": f"{'attachment' if download else 'inline'}; filename=\"{safe_title}.pdf\"; filename*=UTF-8''{encoded_filename}"
             }
         )
     except Exception as e:
@@ -302,6 +305,28 @@ async def duplicate_document(
 ):
     service = DocumentService(db)
     return service.duplicate_document(document_id, current_user, folder_id)
+
+@router.get("/tags/", response_model=List[str])
+def read_tags(
+    q: str = Query("", min_length=0),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get all unique tags from documents accessible to the user."""
+    docs = db.query(Document.tags).filter(
+        or_(
+            Document.owner_id == current_user.id,
+            and_(Document.is_public == True, Document.is_private == False)
+        )
+    ).all()
+    all_tags: set[str] = set()
+    for (tags_str,) in docs:
+        if tags_str:
+            for t in tags_str.split(","):
+                t = t.strip()
+                if t and (not q or q.lower() in t.lower()):
+                    all_tags.add(t)
+    return sorted(all_tags, key=lambda x: (len(x), x))[:50]
 
 # --- Categories & FileTypes (Kept simple in Router for now) ---
 

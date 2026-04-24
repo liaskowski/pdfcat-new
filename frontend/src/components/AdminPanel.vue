@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import { useAdminStore } from '@/stores/admin'
+import { useToast } from '@/composables/useToast'
 import { Button } from '@/components/ui/button'
 import Shimmer from './ui/Shimmer.vue'
 import CreateUserDialog from './CreateUserDialog.vue'
@@ -13,6 +14,7 @@ import {
 const emit = defineEmits(['close'])
 
 const { t } = useI18n()
+const toast = useToast()
 
 const adminStore = useAdminStore()
 const activeTab = ref<'dashboard' | 'users' | 'tags'>('dashboard')
@@ -136,7 +138,7 @@ async function handleDeleteUser(userId: number) {
   try {
     await adminStore.deleteUser(userId)
   } catch (e) {
-    alert(t('admin.delete_failed'))
+    toast.error(t('admin.delete_failed'))
   }
 }
 

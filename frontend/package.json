@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@embedpdf/vue-pdf-viewer": "^2.14.1",
     "@tailwindcss/vite": "^4.2.2",
     "@tuttarealstep/vue-pdf.js": "^2.0.2",
     "@vueuse/core": "^14.2.1",
@@ -16,7 +17,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-vue-next": "^0.577.0",
-    "pdfjs-dist": "^5.5.207",
+    "pdfjs-dist": "^5.6.205",
     "pinia": "^3.0.4",
     "radix-vue": "^1.9.17",
     "reka-ui": "^2.9.2",

@@ -3,9 +3,13 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 import logging
+import threading
 from .config import settings
 
 logger = logging.getLogger(__name__)
+
+# Thread-safe lock for SQLite operations
+sqlite_lock = threading.Lock()
 
 # Use database URL from settings
 is_sqlite = settings.DATABASE_URL.startswith("sqlite")
@@ -47,11 +51,12 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    with sqlite_lock:
+        db = SessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
 
 def get_db_session():
     return SessionLocal()

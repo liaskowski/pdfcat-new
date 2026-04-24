@@ -2,7 +2,7 @@
 import { ref, computed, watch } from 'vue'
 import {
   Calendar, FileText, User, Download, Trash2, Edit, ExternalLink,
-  Tag, Folder, FileType, Pencil, History, CheckCircle, X, Loader2
+  Tag, Folder, FileType, Pencil, History, X, Loader2
 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { useDocumentStore, type Document, type FileHistory } from '@/stores/documents'
@@ -200,14 +200,12 @@ const handleClose = () => emit('close')
                 <span class="metadata-value">{{ document.file_type.name }}</span>
               </div>
             </div>
-            <div class="metadata-item">
-              <CheckCircle class="h-4 w-4" :class="document.ocr_status === 'completed' ? 'text-success' : 'text-muted-foreground'" />
-              <div class="metadata-content">
-                <span class="metadata-label">{{ t('document.ocr_status') }}</span>
-                <span class="metadata-value capitalize">{{ document.ocr_status === 'completed' ? t('document.ocr_completed') : t('document.ocr_not_started') }}</span>
-              </div>
-            </div>
           </div>
+        </div>
+
+        <div v-if="document.notes" class="notes-section">
+          <h4 class="section-title">{{ t('document.notes') }}</h4>
+          <p class="notes-text">{{ document.notes }}</p>
         </div>
 
         <div class="tags-section">
@@ -223,25 +221,23 @@ const handleClose = () => emit('close')
           </div>
           <p v-else class="no-tags">{{ t('document.no_tags') }}</p>
         </div>
-
-        <div v-if="document.notes" class="notes-section">
-          <h4 class="section-title">{{ t('document.notes') }}</h4>
-          <p class="notes-text">{{ document.notes }}</p>
-        </div>
       </div>
 
       <div v-else-if="activeTab === 'history'" class="tab-pane history-pane">
         <div v-if="isLoadingHistory" class="loading-history">
           <Loader2 class="h-6 w-6 animate-spin" />
         </div>
-        <div v-else-if="history.length > 0" class="history-list">
+          <div v-else-if="history.length > 0" class="history-list">
           <div v-for="item in history" :key="item.id" class="history-item">
             <div class="history-header">
-              <span class="version-badge">v{{ item.version ?? '—' }}</span>
-              <span class="history-date">{{ formatDate(item.change_date) }}</span>
+              <span class="version-badge">{{ item.change_type }}</span>
+              <span class="history-date">{{ formatDate(item.changed_at) }}</span>
             </div>
-            <p class="history-user">{{ item.changed_by || '—' }}</p>
-            <p v-if="item.notes" class="history-notes">{{ item.notes }}</p>
+            <p class="history-user">{{ item.changed_by_username }}</p>
+            <p v-if="item.field_changed" class="history-field">
+              <strong>{{ item.field_changed }}:</strong> {{ item.old_value || '(empty)' }} → {{ item.new_value || '(empty)' }}
+            </p>
+            <p v-else class="history-field">{{ item.new_value }}</p>
           </div>
         </div>
         <div v-else class="empty-history">
@@ -400,5 +396,7 @@ const handleClose = () => emit('close')
 .history-user { font-size: 0.8125rem; margin: 0; }
 .history-notes { font-size: 0.8125rem; color: hsl(var(--muted-foreground)); margin-top: 0.25rem; }
 
+.history-field { font-size: 0.8125rem; margin: 0.25rem 0 0; }
+.history-field strong { color: hsl(var(--foreground)); font-weight: 600; }
 .loading-history, .empty-history { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; color: hsl(var(--muted-foreground)); }
 </style>

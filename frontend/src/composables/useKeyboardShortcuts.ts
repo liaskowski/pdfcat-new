@@ -10,6 +10,7 @@ interface KeyboardShortcutHandlers {
   onSearch?: () => void
   onUpload?: () => void
   onClose?: () => void
+  onOpen?: () => void
 }
 
 export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
@@ -56,6 +57,9 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
       handlers.onUpload?.()
     } else if (e.key === 'Escape') {
       handlers.onClose?.()
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      handlers.onOpen?.()
     }
   }
 

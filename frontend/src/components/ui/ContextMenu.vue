@@ -76,12 +76,23 @@ function handleItemClick(item: any) {
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
   document.addEventListener('contextmenu', handleClickOutside) // Close on other right clicks
+  window.addEventListener('scroll', handleClose, true) // Close on scroll
+  window.addEventListener('resize', handleClose) // Close on resize
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
   document.removeEventListener('contextmenu', handleClickOutside)
+  window.removeEventListener('scroll', handleClose, true)
+  window.removeEventListener('resize', handleClose)
 })
+
+function handleClose() {
+  if (props.modelValue) {
+    emit('update:modelValue', false)
+    emit('close')
+  }
+}
 </script>
 
 <template>
