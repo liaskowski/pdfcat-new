@@ -54,7 +54,7 @@ function handleSegmentClick(segment: PathSegment) {
   padding: 0.5rem 1rem;
   border-bottom: 1px solid hsl(var(--border));
   background-color: hsl(var(--background));
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
 }
 
 .breadcrumb-item {

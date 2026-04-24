@@ -285,7 +285,7 @@ const handleClose = () => emit('close')
 }
 
 .panel-title {
-  font-size: 0.875rem;
+  font-size: 1rem;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -360,7 +360,7 @@ const handleClose = () => emit('close')
 .preview-actions { display: flex; gap: 0.5rem; }
 
 .section-title {
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   text-transform: uppercase;
   color: hsl(var(--muted-foreground));
@@ -371,14 +371,14 @@ const handleClose = () => emit('close')
 .metadata-item { display: flex; gap: 0.75rem; align-items: flex-start; }
 .metadata-item .h-4 { color: hsl(var(--muted-foreground)); margin-top: 0.125rem; }
 .metadata-content { display: flex; flex-direction: column; }
-.metadata-label { font-size: 0.75rem; color: hsl(var(--muted-foreground)); }
-.metadata-value { font-size: 0.875rem; }
+.metadata-label { font-size: 0.8125rem; color: hsl(var(--muted-foreground)); }
+.metadata-value { font-size: 0.9375rem; }
 
 .tags-header { display: flex; align-items: center; gap: 0.5rem; }
 .tags-list { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-top: 0.5rem; }
 .tag-btn {
-  padding: 0.25rem 0.5rem;
-  font-size: 0.75rem;
+  padding: 0.3rem 0.625rem;
+  font-size: 0.8125rem;
   background-color: hsl(var(--secondary));
   border-radius: 9999px;
   border: none;

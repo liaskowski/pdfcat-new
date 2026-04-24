@@ -412,7 +412,7 @@ function cancelFolderRename() {
 }
 
 .nav-title {
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -475,7 +475,7 @@ function cancelFolderRename() {
   border-radius: 0.375rem;
   cursor: pointer;
   transition: all 0.15s ease;
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
   color: hsl(var(--foreground));
   position: relative;
 }

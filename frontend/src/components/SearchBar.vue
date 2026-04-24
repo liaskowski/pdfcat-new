@@ -166,7 +166,7 @@ onUnmounted(() => {
   border-radius: 0.375rem;
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
   transition: all 0.15s ease;
 }
 

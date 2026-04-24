@@ -555,7 +555,7 @@ function handleClose() {
 }
 
 .modal-title {
-  font-size: 1rem;
+  font-size: 1.125rem;
   font-weight: 600;
   margin: 0;
 }
@@ -797,18 +797,18 @@ function handleClose() {
 }
 
 .form-label {
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 500;
 }
 
 .select-input {
   width: 100%;
-  padding: 0.5rem;
+  padding: 0.5rem 0.625rem;
   border: 1px solid hsl(var(--border));
   border-radius: 0.375rem;
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   outline: none;
   transition: border-color 0.15s;
 }

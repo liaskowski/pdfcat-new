@@ -725,8 +725,8 @@ onMounted(() => {
 }
 
 .toolbar-left { display: flex; align-items: center; gap: 0.75rem; flex-wrap: nowrap; }
-.toolbar-title { font-size: 1.125rem; font-weight: 600; margin: 0; color: hsl(var(--foreground)); white-space: nowrap; }
-.document-count { font-size: 0.875rem; color: hsl(var(--muted-foreground)); }
+.toolbar-title { font-size: 1.25rem; font-weight: 600; margin: 0; color: hsl(var(--foreground)); white-space: nowrap; }
+.document-count { font-size: 0.9375rem; color: hsl(var(--muted-foreground)); }
 
 .toolbar-right { display: flex; align-items: center; gap: 0.75rem; flex-wrap: nowrap; }
 

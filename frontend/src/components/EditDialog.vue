@@ -431,7 +431,7 @@ function onTypeCreated(item: { id: number; name: string }) {
 }
 
 .modal-title {
-  font-size: 1rem;
+  font-size: 1.125rem;
   font-weight: 600;
   margin: 0;
 }
@@ -532,7 +532,7 @@ function onTypeCreated(item: { id: number; name: string }) {
   display: flex;
   align-items: center;
   gap: 0.375rem;
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 600;
   color: hsl(var(--foreground));
 }
@@ -618,18 +618,18 @@ function onTypeCreated(item: { id: number; name: string }) {
 }
 
 .form-label {
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 500;
 }
 
 .select-input {
   width: 100%;
-  padding: 0.5rem;
+  padding: 0.5rem 0.625rem;
   border: 1px solid hsl(var(--border));
   border-radius: 0.375rem;
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   outline: none;
   transition: border-color 0.15s;
 }
@@ -671,11 +671,11 @@ function onTypeCreated(item: { id: number; name: string }) {
 
 .textarea {
   width: 100%;
-  padding: 0.5rem;
+  padding: 0.5rem 0.625rem;
   border: 1px solid hsl(var(--border));
   border-radius: 0.375rem;
   background-color: hsl(var(--background));
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   resize: vertical;
   outline: none;
   transition: border-color 0.15s;
