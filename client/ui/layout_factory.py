@@ -7,6 +7,7 @@ from .file_grid import FileGrid
 from .preview_panel import PreviewPanel
 from ..api_manager import APIManager
 from ..utils.translator import Translator
+from ..themes import ThemeManager
 
 class LayoutFactory:
     def __init__(self, api: APIManager):
@@ -51,7 +52,8 @@ class LayoutFactory:
         import qtawesome as qta
         from PyQt6.QtCore import QSize
         self.add_pdf_btn = QPushButton(self.translator.tr("main.sidebar_upload"))
-        self.add_pdf_btn.setIcon(qta.icon('fa5s.plus-circle', color='white'))
+        tm = ThemeManager()
+        self.add_pdf_btn.setIcon(qta.icon('fa5s.plus-circle', color=tm.get_color("white")))
         self.add_pdf_btn.setIconSize(QSize(20, 20))
         self.add_pdf_btn.setToolTip(self.translator.tr("main.tooltip_upload"))
         self.add_pdf_btn.setObjectName("primaryButton")
@@ -74,8 +76,9 @@ class LayoutFactory:
         toolbar_layout.setContentsMargins(0, 0, 0, 0)
         
         self.breadcrumbs = QLabel(self.translator.tr("main.my_documents"))
-        self.breadcrumbs.setObjectName("sectionTitle")
-        self.breadcrumbs.setStyleSheet("margin-left: 12px; color: #666;")
+        self.breadcrumbs.setObjectName("breadcrumbsLabel")
+        tm = ThemeManager()
+        self.breadcrumbs.setStyleSheet(f"margin-left: 12px; color: {tm.get_color('text_secondary')}; font-weight: bold;")
         
         self.sort_combo = QComboBox()
         self.sort_combo.addItem(self.translator.tr("sort.name_asc"), "name_asc")

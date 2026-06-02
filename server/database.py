@@ -8,9 +8,6 @@ from .config import settings
 
 logger = logging.getLogger(__name__)
 
-# Thread-safe lock for SQLite operations
-sqlite_lock = threading.Lock()
-
 # Use database URL from settings
 is_sqlite = settings.DATABASE_URL.startswith("sqlite")
 
@@ -24,7 +21,7 @@ engine_args = {
 if is_sqlite:
     engine_args.update({
         "connect_args": {"check_same_thread": False},
-        "poolclass": StaticPool,
+        # Use a small pool or NullPool for SQLite to avoid lock contention
     })
 else:
     # Standard connection pooling for PostgreSQL/others
@@ -51,12 +48,11 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 def get_db():
-    with sqlite_lock:
-        db = SessionLocal()
-        try:
-            yield db
-        finally:
-            db.close()
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 def get_db_session():
     return SessionLocal()

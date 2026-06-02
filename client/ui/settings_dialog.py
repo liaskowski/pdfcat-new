@@ -98,9 +98,19 @@ class SettingsDialog(QDialog):
         
         layout.addLayout(btn_layout)
 
+        # Connect signals for real-time preview
+        self.theme_combo.currentTextChanged.connect(self._on_preview_changed)
+        self.font_combo.currentTextChanged.connect(self._on_preview_changed)
+
     def closeEvent(self, event):
         self.settings.setValue(f"Geometry/{self.__class__.__name__}", self.saveGeometry())
         super().closeEvent(event)
+
+    def _on_preview_changed(self):
+        theme = self.theme_combo.currentText()
+        font_size = int(self.font_combo.currentText())
+        scale = int(self.scale_combo.currentText().replace("%", ""))
+        self._apply_to_app(theme, scale, font_size)
 
     def _on_manage_clicked(self):
         dlg = ManageDialog(self.api, self.is_admin, self)

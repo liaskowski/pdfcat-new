@@ -98,6 +98,7 @@ def start_go_service(service_name, service_path, port):
 def find_python():
     """Find working Python executable"""
     candidates = [
+        "vendor/python/python.exe",
         ".venv/Scripts/python.exe",
         ".venv/bin/python",
         "python",

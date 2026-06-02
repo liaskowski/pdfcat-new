@@ -52,6 +52,15 @@ class Folder(Base):
     children = relationship("Folder", back_populates="parent", cascade="all, delete-orphan")
     documents = relationship("Document", back_populates="folder")
 
+    @property
+    def full_path(self) -> str:
+        path = [self.name]
+        curr = self.parent
+        while curr:
+            path.insert(0, curr.name)
+            curr = curr.parent
+        return " / ".join(path)
+
 class Document(Base):
     __tablename__ = "documents"
     
@@ -79,6 +88,14 @@ class Document(Base):
     folder = relationship("Folder", back_populates="documents")
     index = relationship("DocumentIndex", back_populates="document", uselist=False)
     history = relationship("FileHistory", back_populates="document", cascade="all, delete-orphan")
+
+    @property
+    def folder_name(self) -> Optional[str]:
+        return self.folder.name if self.folder else None
+
+    @property
+    def folder_full_path(self) -> Optional[str]:
+        return self.folder.full_path if self.folder else None
 
     @property
     def owner_username(self) -> Optional[str]:

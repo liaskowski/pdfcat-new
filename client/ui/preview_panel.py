@@ -152,11 +152,11 @@ class PreviewPanel(QFrame):
         icon_size = QSize(20, 20)
 
         self.open_file_btn = QPushButton(self.translator.tr("context_menu.open"))
-        self.open_file_btn.setIcon(qta.icon('fa5s.external-link-alt', color=text_color))
+        self.open_file_btn.setIcon(qta.icon('fa5s.external-link-alt', color=self.theme_manager.get_icon_color()))
         self.open_file_btn.setIconSize(icon_size)
         
         self.edit_btn = QPushButton(self.translator.tr("common.edit"))
-        self.edit_btn.setIcon(qta.icon('fa5s.edit', color=text_color))
+        self.edit_btn.setIcon(qta.icon('fa5s.edit', color=self.theme_manager.get_icon_color()))
         self.edit_btn.setIconSize(icon_size)
         
         self.download_btn = QPushButton(self.translator.tr("context_menu.download"))
@@ -240,16 +240,33 @@ class PreviewPanel(QFrame):
         
         self._clear_tags()
         if doc.tags:
-            for tag in doc.tags.split(","):
-                tag = tag.strip()
-                if tag:
-                    display_text = tag if tag.startswith("#") else f"#{tag}"
-                    btn = QPushButton(display_text)
-                    btn.setObjectName("tagButton")
-                    btn.setCursor(Qt.CursorShape.PointingHandCursor)
-                    search_query = tag if tag.startswith("#") else f"#{tag}"
-                    btn.clicked.connect(lambda checked, q=search_query: self.tag_clicked.emit(q))
-                    self.tags_layout.addWidget(btn)
+            tags = [t.strip() for t in doc.tags.split(",") if t.strip()]
+            for tag in tags:
+                display_text = tag if tag.startswith("#") else f"#{tag}"
+                btn = QPushButton(display_text)
+                btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                
+                # Custom styling for a modern "pill" chip look using theme colors
+                prim = self.theme_manager.get_color("primary")
+                btn.setStyleSheet(f"""
+                    QPushButton {{
+                        background-color: {prim}22;
+                        color: {prim};
+                        border: 1px solid {prim}44;
+                        border-radius: 10px;
+                        padding: 2px 10px;
+                        font-size: 11px;
+                        font-weight: bold;
+                    }}
+                    QPushButton:hover {{
+                        background-color: {prim}44;
+                        border: 1px solid {prim};
+                    }}
+                """)
+                
+                search_query = tag if tag.startswith("#") else f"#{tag}"
+                btn.clicked.connect(lambda checked, q=search_query: self.tag_clicked.emit(q))
+                self.tags_layout.addWidget(btn)
 
         self.description_text.setPlainText(doc.notes or self.translator.tr("preview.no_notes"))
         self._adjust_notes_height()

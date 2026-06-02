@@ -63,7 +63,7 @@ class SearchBar(QFrame):
         
         # Add clear action
         self.clear_action = self.search_input.addAction(
-            qta.icon('fa5s.times', color=self.theme_manager.get_color("text_secondary")),
+            qta.icon('fa5s.times', color=self.theme_manager.get_icon_color()),
             QLineEdit.ActionPosition.TrailingPosition
         )
         self.clear_action.setVisible(False)

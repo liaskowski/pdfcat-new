@@ -40,8 +40,15 @@ echo [INFO] Attempting to start FastAPI Server...
 :: Try different Python locations
 set "PYTHON_FOUND=0"
 
+:: Try 0: Portable Python
+if exist "vendor\python\python.exe" (
+    echo [INFO] Using portable 64-bit Python...
+    set "PYTHON_CMD=vendor\python\python.exe"
+    set "PYTHON_FOUND=1"
+)
+
 :: Try 1: Virtual environment
-if exist ".venv\Scripts\python.exe" (
+if "%PYTHON_FOUND%"=="0" if exist ".venv\Scripts\python.exe" (
     echo [INFO] Using virtual environment Python...
     set "PYTHON_CMD=.venv\Scripts\python.exe"
     set "PYTHON_FOUND=1"

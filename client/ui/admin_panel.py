@@ -44,11 +44,11 @@ class AdminPanelDialog(QDialog):
         
         user_btns = QHBoxLayout()
         self.refresh_btn = QPushButton(self.translator.tr("admin.refresh"))
-        self.refresh_btn.setIcon(qta.icon("fa5s.sync", color=self.theme_manager.get_color("text")))
+        self.refresh_btn.setIcon(qta.icon("fa5s.sync", color=self.theme_manager.get_icon_color()))
         
         self.delete_btn = QPushButton(self.translator.tr("admin.delete_user"))
         self.delete_btn.setObjectName("dangerButton")
-        self.delete_btn.setIcon(qta.icon("fa5s.user-minus", color="white"))
+        self.delete_btn.setIcon(qta.icon("fa5s.user-minus", color=self.theme_manager.get_color("white")))
         
         user_btns.addWidget(self.refresh_btn)
         user_btns.addStretch()

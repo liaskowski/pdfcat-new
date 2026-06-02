@@ -28,9 +28,10 @@ class DocumentService:
         # Access Check
         if doc.owner_id != user.id and not user.role == "admin":
             if not (doc.is_public or doc.is_public_edit):
-                if doc.is_private:
-                     raise HTTPException(status_code=403, detail="Access denied")
+                # Security Fix: Default to Denied. Access only if explicitly public or owner.
+                raise HTTPException(status_code=403, detail="Access denied")
         
+        return doc
         return doc
 
     def list_documents(
@@ -138,6 +139,16 @@ class DocumentService:
             folder = self.db.query(Folder).filter(Folder.id == folder_id).first()
             if not folder:
                 raise HTTPException(status_code=404, detail="Folder not found")
+            
+            # Security Inheritance logic updated:
+            # If folder is public, make doc public. 
+            # If folder is NOT public, make doc private.
+            if folder.is_public:
+                is_public = True
+                is_private = False
+            else:
+                is_public = False
+                is_private = True
 
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         safe_filename = f"{timestamp}_{file.filename}"
@@ -198,7 +209,26 @@ class DocumentService:
                   raise HTTPException(status_code=403, detail="Write access denied")
 
         # Track history
-        for key, value in update_data.model_dump(exclude_unset=True).items():
+        data = update_data.model_dump(exclude_unset=True)
+        
+        # Inheritance on Move: If folder_id changes, adopt new folder's security settings
+        new_fid = data.get("folder_id")
+        if new_fid is not None and new_fid != doc.folder_id:
+            target = self.db.query(Folder).filter(Folder.id == new_fid).first()
+            if target:
+                # Inheritance Logic (Sync with Folder.is_public):
+                if target.is_public:
+                    data["is_public"] = True
+                    data["is_private"] = False
+                    # is_public_edit stays same or we can reset it? 
+                    # Safer to keep it False unless explicitly public
+                else:
+                    data["is_public"] = False
+                    data["is_private"] = True
+                    data["is_public_edit"] = False
+
+
+        for key, value in data.items():
             # Skip if value is None for required fields (title and booleans)
             if value is None and key in ["title", "is_private", "is_public", "is_public_edit", "is_read_only"]:
                  continue

@@ -127,6 +127,7 @@ class DocumentResponse(BaseModel):
     category: Optional[CategoryResponse] = None
     file_type: Optional[FileTypeResponse] = None
     folder_id: Optional[int] = None
+    folder_full_path: Optional[str] = None
     
     class Config:
         from_attributes = True

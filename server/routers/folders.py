@@ -148,24 +148,33 @@ def patch_folder(
 
     update_data = folder_update.model_dump(exclude_unset=True)
     
-    # Check if visibility changed
-    is_public_new = update_data.get("is_public")
-    if is_public_new is not None and is_public_new != db_folder.is_public:
-        # Recursive update helper
-        def update_children(fid: int, state: bool):
-            # Update docs in this folder
-            db.query(Document).filter(Document.folder_id == fid).update(
-                {Document.is_public: state}, 
-                synchronize_session=False
-            )
-            # Find and update subfolders
+    # Check if any security settings changed
+    is_pub = update_data.get("is_public")
+    is_priv = update_data.get("is_private")
+    is_pub_edit = update_data.get("is_public_edit")
+    
+    # Sync logic based on existing Folder.is_public field
+    if is_pub is not None:
+        def sync_security_inheritance(fid: int, pub_state: bool):
+            # Calculate logic: If pub_state is False -> document is Private
+            # If pub_state is True -> document is Public
+            target_is_private = not pub_state
+            
+            # Sync Documents in this folder
+            db.query(Document).filter(Document.folder_id == fid).update({
+                Document.is_public: pub_state,
+                Document.is_private: target_is_private,
+                Document.is_public_edit: False if not pub_state else Document.is_public_edit
+            }, synchronize_session=False)
+            
+            # Sync Subfolders recursively
             subs = db.query(Folder).filter(Folder.parent_id == fid).all()
             for sub in subs:
-                sub.is_public = state
-                # Recurse
-                update_children(sub.id, state)
+                sub.is_public = pub_state
+                # (Folders don't have is_private field, only is_public)
+                sync_security_inheritance(sub.id, pub_state)
         
-        update_children(db_folder.id, is_public_new)
+        sync_security_inheritance(db_folder.id, is_pub)
 
     for key, value in update_data.items():
         setattr(db_folder, key, value)

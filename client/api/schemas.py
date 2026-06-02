@@ -112,6 +112,7 @@ class APIDocument:
     owner_avatar_url: Optional[str] = None
     file_size: Optional[int] = None
     content: Optional[str] = None
+    folder_full_path: Optional[str] = None
 
     @staticmethod
     def from_json(data: dict[str, Any]) -> "APIDocument":
@@ -179,4 +180,5 @@ class APIDocument:
             owner_avatar_url=data.get("owner_avatar_url"),
             file_size=data.get("file_size"),
             content=data.get("content"),
+            folder_full_path=data.get("folder_full_path"),
         )

@@ -13,6 +13,7 @@ from .server_status import ServerStatusWorker
 from ..utils.translator import Translator
 from ..workers.discovery_worker import DiscoveryWorker
 from ..utils.logger import get_logger, log_info, log_error, log_warning, log_debug
+from ..themes import ThemeManager
 
 logger = get_logger("client.auth")
 
@@ -85,13 +86,14 @@ class ServerSelectionDialog(QDialog):
         
         # Scan Button
         self.scan_btn = QPushButton("Scan Network for Servers")
-        self.scan_btn.setIcon(qta.icon('fa5s.search', color='black'))
+        ic_col = ThemeManager().get_icon_color()
+        self.scan_btn.setIcon(qta.icon('fa5s.search', color=ic_col))
         self.scan_btn.clicked.connect(self.start_scan)
         layout.addWidget(self.scan_btn)
         
         # Network Check Button
         self.check_btn = QPushButton("Check Network Capability")
-        self.check_btn.setIcon(qta.icon('fa5s.network-wired', color='black'))
+        self.check_btn.setIcon(qta.icon('fa5s.network-wired', color=ic_col))
         self.check_btn.clicked.connect(self.perform_network_check)
         layout.addWidget(self.check_btn)
         

@@ -122,8 +122,8 @@ class CustomTitleBar(QWidget):
         border_color = palette["border"]
         danger_bg = palette["danger"]
         
-        # Icon color: dark for light theme, white for dark theme
-        icon_color = "#1C1C1E" if theme_name == "Light" else "#EBEBF5"
+        # Use centralized icon color from palette
+        icon_color = self.theme_manager.get_icon_color()
         
         self.setStyleSheet(f"""
             QWidget#titleBar {{

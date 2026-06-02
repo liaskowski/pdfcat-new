@@ -16,21 +16,25 @@ class ThemeManager:
         "danger": "#FF453A",
         "success": "#32D74B",
         "hover": "#2C2C2E",
-        "white": "#FFFFFF"
+        "white": "#FFFFFF",
+        "icon": "#EBEBF5",
+        "tooltip_bg": "#2C2C2E"
     }
     
     PALETTE_LIGHT = {
-        "background": "#F5F5F7",
+        "background": "#F0F0F2", # Softer than F5F5F7
         "surface": "#FFFFFF",
         "border": "#D1D1D6",
-        "text": "#1C1C1E",
-        "text_secondary": "#636366",
+        "text": "#2C2C2E", # Softer than 1C1C1E
+        "text_secondary": "#6A6A6E",
         "primary": "#007AFF",
         "accent": "#007AFF",
         "danger": "#FF3B30",
         "success": "#34C759",
         "hover": "#E5E5EA",
-        "white": "#FFFFFF"
+        "white": "#FFFFFF",
+        "icon": "#48484A",
+        "tooltip_bg": "#FFFFFF"
     }
 
     def __new__(cls):
@@ -60,7 +64,7 @@ class ThemeManager:
         return p.get(color_name, "#FF00FF")
 
     def get_icon_color(self) -> str:
-        return "#343a40" if self.current_theme == "Light" else "#F8F9FA"
+        return self.get_color("icon")
 
 # ==============================================================================
 # BASE COMPONENT STYLES
@@ -93,43 +97,48 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: n
 
 QSplitter::handle { background-color: palette(border); }
 QSplitter::handle:hover { background-color: palette(primary); }
+QToolTip { background-color: palette(tooltip_bg); color: palette(text); border: 1px solid palette(border); padding: 5px; border-radius: 4px; }
 """
 
 # ==============================================================================
 # LIGHT THEME
 # ==============================================================================
-LIGHT_THEME_QSS = (BASE_QSS + "").replace("palette(border)", "#D1D1D6").replace("palette(primary)", "#007AFF").replace("palette(scrollbar_handle)", "#C1C1C1").replace("palette(background)", "#F5F5F7").replace("palette(surface)", "#FFFFFF").replace("palette(text_secondary)", "#636366").replace("palette(hover)", "#E5E5EA") + """
+LIGHT_THEME_QSS = (BASE_QSS + "").replace("palette(border)", "#D1D1D6").replace("palette(primary)", "#007AFF").replace("palette(scrollbar_handle)", "#C1C1C1").replace("palette(background)", "#F0F0F2").replace("palette(surface)", "#FFFFFF").replace("palette(text_secondary)", "#6A6A6E").replace("palette(hover)", "#E5E5EA").replace("palette(tooltip_bg)", "#FFFFFF").replace("palette(text)", "#2C2C2E").replace("palette(icon)", "#48484A") + """
 QMainWindow, QDialog, QMessageBox, QScrollArea, QStackedWidget, #root, QScrollArea > QWidget > QWidget { 
-    background-color: #F5F5F7; 
-    color: #1C1C1E; 
+    background-color: #F0F0F2; 
+    color: #2C2C2E; 
 }
 QScrollArea { border: none; }
-QAbstractScrollArea::viewport { background-color: #F5F5F7; }
+QAbstractScrollArea::viewport { background-color: #F0F0F2; }
 
-QWidget { color: #1C1C1E; }
-QLabel, QCheckBox, QRadioButton, QGroupBox { color: #1C1C1E; background: transparent; }
+QWidget { color: #2C2C2E; }
+QLabel, QCheckBox, QRadioButton, QGroupBox { color: #2C2C2E; background: transparent; }
 
-#sidebarPanel { background-color: #EBEBEB; border-right: 1px solid #D1D1D6; }
+#sidebarPanel { background-color: #E8E8E8; border-right: 1px solid #D1D1D6; }
 #centerPanel, #card, #inspectorPanel { background-color: #FFFFFF; border: 1px solid #D1D1D6; border-radius: 8px; }
 #sidebarPanel #card, #sidebarPanel QTreeWidget { background-color: transparent; border: none; }
 
-QLineEdit, QTextEdit, QPlainTextEdit { background-color: #FFFFFF; border: 1px solid #D1D1D6; color: #000000; border-radius: 6px; }
-QLineEdit:focus { border: 1px solid #007AFF; }
+QLineEdit, QTextEdit, QPlainTextEdit { background-color: #FFFFFF; border: 1px solid #D1D1D6; color: #2C2C2E; border-radius: 6px; padding: 4px; }
+QLineEdit:disabled, QTextEdit:disabled { background-color: #F5F5F7; color: #8E8E93; }
+LLineEdit:focus { border: 1px solid #007AFF; }
 
-QHeaderView::section { background-color: #E5E5EA; color: #1C1C1E; border-bottom: 1px solid #D1D1D6; }
-QTableWidget, QListWidget, QTreeWidget { background-color: #FFFFFF; alternate-background-color: #FAFAFA; color: #1C1C1E; }
-QTableWidget::item:selected, QListWidget::item:selected, QTreeWidget::item:selected { background-color: #007AFF; color: #FFFFFF; }
+QHeaderView::section { background-color: #E5E5EA; color: #2C2C2E; border-bottom: 1px solid #D1D1D6; }
+QTableWidget, QListWidget, QTreeWidget { background-color: #FFFFFF; alternate-background-color: #F9F9F9; color: #2C2C2E; }
+QTableWidget::item:selected, QListWidget::item:selected, QTreeWidget::item:selected { background-color: #007AFF; color: #FFFFFF; border-radius: 4px; }
+QListWidget::item:hover, QTreeWidget::item:hover { background-color: #E5E5EA; border-radius: 4px; }
 
-QPushButton { background-color: #FFFFFF; border: 1px solid #D1D1D6; color: #1C1C1E; }
+QPushButton { background-color: #FFFFFF; border: 1px solid #D1D1D6; color: #2C2C2E; }
 QPushButton:hover { background-color: #F2F2F7; }
+QPushButton:pressed { background-color: #E5E5EA; }
+QPushButton:disabled { background-color: #F2F2F7; color: #8E8E93; border: 1px solid #E5E5EA; }
 QPushButton#primaryButton { background-color: #007AFF; color: #FFFFFF; border: none; }
 QPushButton#dangerButton { background-color: #FF3B30; color: #FFFFFF; border: none; }
 QPushButton#warningButton { background-color: #FF9500; color: #FFFFFF; border: none; }
 
-QComboBox { background-color: #FFFFFF; color: #1C1C1E; }
-QComboBox QAbstractItemView { background-color: #FFFFFF; border: 1px solid #D1D1D6; selection-background-color: #007AFF; color: #1C1C1E; }
+QComboBox { background-color: #FFFFFF; color: #2C2C2E; }
+QComboBox QAbstractItemView { background-color: #FFFFFF; border: 1px solid #D1D1D6; selection-background-color: #007AFF; color: #2C2C2E; }
 
-QMenu { background-color: #FFFFFF; border: 1px solid #D1D1D6; color: #1C1C1E; }
+QMenu { background-color: #FFFFFF; border: 1px solid #D1D1D6; color: #2C2C2E; }
 QMenu::item { padding: 6px 20px; background-color: transparent; }
 QMenu::item:selected { background-color: #007AFF; color: #FFFFFF; }
 QMenu::separator { height: 1px; background: #E5E5EA; margin: 4px 0px; }
@@ -138,7 +147,7 @@ QMenu::separator { height: 1px; background: #E5E5EA; margin: 4px 0px; }
 # ==============================================================================
 # DARK THEME
 # ==============================================================================
-DARK_THEME_QSS = (BASE_QSS + "").replace("palette(border)", "#333333").replace("palette(primary)", "#0A84FF").replace("palette(scrollbar_handle)", "#3D3D3D").replace("palette(background)", "#121212").replace("palette(surface)", "#1E1E1E").replace("palette(text_secondary)", "#AAAAAA").replace("palette(hover)", "#2C2C2E") + """
+DARK_THEME_QSS = (BASE_QSS + "").replace("palette(border)", "#333333").replace("palette(primary)", "#0A84FF").replace("palette(scrollbar_handle)", "#3D3D3D").replace("palette(background)", "#121212").replace("palette(surface)", "#1E1E1E").replace("palette(text_secondary)", "#AAAAAA").replace("palette(hover)", "#2C2C2E").replace("palette(tooltip_bg)", "#2C2C2E").replace("palette(text)", "#FFFFFF").replace("palette(icon)", "#EBEBF5") + """
 QMainWindow, QDialog, QMessageBox, QScrollArea, QStackedWidget, #root, QScrollArea > QWidget > QWidget { 
     background-color: #121212; 
     color: #EBEBF5; 

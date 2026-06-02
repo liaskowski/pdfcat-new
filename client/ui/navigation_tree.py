@@ -1,5 +1,5 @@
 from typing import Optional, Any, List
-from PyQt6.QtCore import Qt, pyqtSignal, QObject, QThread
+from PyQt6.QtCore import Qt, pyqtSignal, QObject, QThread, QSize
 from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QBrush
 from PyQt6.QtWidgets import (
     QTreeWidget,
@@ -100,6 +100,7 @@ class NavigationTree(QTreeWidget):
         self.setDropIndicatorShown(True)
 
         self.customContextMenuRequested.connect(self._show_folder_context_menu)
+        self.setIndentation(20)
         self.itemExpanded.connect(self._on_item_expanded)
         self.itemChanged.connect(self._on_item_renamed)
         self.itemSelectionChanged.connect(self._on_selection_changed)
@@ -137,15 +138,14 @@ class NavigationTree(QTreeWidget):
         # Scale drawing to new size
         painter.scale(size/16.0, size/16.0)
 
-        # Draw basic folder shape (simplified)
-        # Use theme colors for folder parts
-        painter.setBrush(QBrush(QColor(theme_manager.get_color("text_secondary"))))
+        # High-Fidelity Folder Drawing
+        folder_main = QColor(theme_manager.get_color("primary"))
+        folder_main.setAlpha(180) # Softer look
+        painter.setBrush(QBrush(folder_main))
         painter.setPen(Qt.PenStyle.NoPen)
-        # Tab
-        painter.drawRoundedRect(0, 2, 8, 4, 1, 1)
-        # Body
-        painter.setBrush(QBrush(QColor(theme_manager.get_color("border"))))
-        painter.drawRoundedRect(0, 4, 16, 10, 1, 1)
+        # Tab & Body
+        painter.drawRoundedRect(0, 2, 7, 4, 2, 2)
+        painter.drawRoundedRect(0, 4, 16, 10, 2, 2)
 
         # Draw Green Dot if public
         if is_public:
@@ -211,6 +211,7 @@ class NavigationTree(QTreeWidget):
         my_docs.setText(0, self.translator.tr("main.my_documents"))
         my_docs.setData(0, Qt.ItemDataRole.UserRole, "My Documents")
         my_docs.setIcon(0, self._get_folder_icon(False))
+        my_docs.setData(0, Qt.ItemDataRole.SizeHintRole, QSize(0, 32))
         my_docs.setExpanded(True)
 
         # 2. Shared - temporary text, will be updated with count
@@ -218,12 +219,14 @@ class NavigationTree(QTreeWidget):
         shared.setText(0, self.translator.tr("main.shared_documents"))
         shared.setData(0, Qt.ItemDataRole.UserRole, "Shared Documents")
         shared.setIcon(0, self._get_folder_icon(True))
+        shared.setData(0, Qt.ItemDataRole.SizeHintRole, QSize(0, 32))
 
         # 3. Users
         users_root = QTreeWidgetItem(self)
         users_root.setText(0, self.translator.tr("main.users"))
         users_root.setData(0, Qt.ItemDataRole.UserRole, "Users")
         users_root.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator)
+        users_root.setData(0, Qt.ItemDataRole.SizeHintRole, QSize(0, 32))
 
         # Fetch folders and counts in background
         self._refresh_worker = TreeRefreshWorker(self.api, self._me_id)
