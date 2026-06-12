@@ -196,18 +196,17 @@ class DocumentService:
 
         return db_doc
 
-    def update_document(
-        self,
-        document_id: int,
-        user: User,
-        update_data: DocumentUpdate
-    ) -> Document:
+    def update_document(self, document_id: int, user: User, update_data: DocumentUpdate) -> Document:
         doc = self.get_document(document_id, user)
-        
+
         if doc.owner_id != user.id and not user.role == "admin":
              if not doc.is_public_edit:
                   raise HTTPException(status_code=403, detail="Write access denied")
-
+        
+        # Track original state for security check after update
+        old_is_public = doc.is_public
+        old_is_private = doc.is_private
+        
         # Track history
         data = update_data.model_dump(exclude_unset=True)
         
@@ -241,9 +240,28 @@ class DocumentService:
             # If title is updated, also update filename to keep it pretty
             if key == "title" and value:
                  doc.filename = f"{value}.pdf" if not value.lower().endswith('.pdf') else value
-        
+
         self.db.commit()
         self.db.refresh(doc)
+
+        # Real-time notification logic
+        try:
+            from server.main import manager
+            import asyncio
+            
+            message = {
+                "event": "document_updated",
+                "document_id": doc.id,
+                "user": user.username,
+                "is_public": doc.is_public,
+                "is_private": doc.is_private,
+                "owner_id": doc.owner_id
+            }
+            # Run broadcast in background
+            asyncio.create_task(manager.broadcast_update(doc.id, message))
+        except Exception as e:
+            logger.error(f"WebSocket broadcast failed: {e}")
+
         return doc
 
     def update_document_content(

@@ -129,10 +129,20 @@ class SearchHandler:
         
         # Not in cache or refresh requested - fetch from server
         
-        # Stop any pending search
+        # Stop any pending search safely
         if hasattr(self, '_search_worker') and self._search_worker.isRunning():
-            self._search_worker.terminate()
-            self._search_worker.wait()
+            self._search_worker.stop()
+            self._search_worker.wait(1000) # Wait up to 1s
+            if self._search_worker.isRunning():
+                self._search_worker.terminate()
+                self._search_worker.wait()
+        
+        # Keep reference to avoid garbage collection before thread actually dies
+        if hasattr(self, '_search_worker'):
+            if not hasattr(self, '_old_workers'): self._old_workers = []
+            self._old_workers.append(self._search_worker)
+            # Cleanup finished workers from list
+            self._old_workers = [w for w in self._old_workers if w.isRunning()]
 
         # Show loading only for manual triggers, not for background sync
         if not hasattr(self.controller, 'refresh_timer') or not self.controller.refresh_timer.isActive():
@@ -237,6 +247,16 @@ class SearchHandler:
         if self._indexing_worker and self._indexing_worker.isRunning():
             self._indexing_worker.stop()
             self._indexing_worker.wait(500) # Give it 0.5s to stop gracefully
+            if self._indexing_worker.isRunning():
+                self._indexing_worker.terminate()
+                self._indexing_worker.wait()
+
+        # Keep reference to avoid garbage collection before thread actually dies
+        if self._indexing_worker:
+            if not hasattr(self, '_old_workers'): self._old_workers = []
+            self._old_workers.append(self._indexing_worker)
+            # Cleanup finished workers from list (already handled in fetch_from_server but here for safety)
+            self._old_workers = [w for w in self._old_workers if w.isRunning()]
 
         # 2. Filter out already cached documents locally before starting thread
         # to prevent even spawning the thread if nothing to do

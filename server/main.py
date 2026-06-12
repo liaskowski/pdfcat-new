@@ -22,6 +22,7 @@ import fitz
 fitz.TOOLS.mupdf_display_errors(False)
 
 from fastapi import FastAPI
+from fastapi import WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -31,6 +32,35 @@ from server.security import get_password_hash
 from server.utils.tesseract_config import setup_tesseract
 from server.services.discovery import DiscoveryService
 from server.routers import auth, users, documents, folders, admin, ocr, file_health, assets
+from typing import Dict, Set
+
+class ConnectionManager:
+    def __init__(self):
+        # doc_id -> set of websockets
+        self.active_connections: Dict[int, Set[WebSocket]] = {}
+
+    async def connect(self, websocket: WebSocket, doc_id: int):
+        await websocket.accept()
+        if doc_id not in self.active_connections:
+            self.active_connections[doc_id] = set()
+        self.active_connections[doc_id].add(websocket)
+
+    def disconnect(self, websocket: WebSocket, doc_id: int):
+        if doc_id in self.active_connections:
+            self.active_connections[doc_id].remove(websocket)
+            if not self.active_connections[doc_id]:
+                del self.active_connections[doc_id]
+
+    async def broadcast_update(self, doc_id: int, message: dict):
+        if doc_id in self.active_connections:
+            for connection in self.active_connections[doc_id]:
+                try:
+                    await connection.send_json(message)
+                except Exception:
+                    pass
+
+manager = ConnectionManager()
+
 from contextlib import asynccontextmanager
 
 # Настройка логирования
@@ -218,6 +248,16 @@ app.include_router(admin.router)
 app.include_router(ocr.router)
 app.include_router(file_health.router)
 app.include_router(assets.router)
+
+@app.websocket("/ws/documents/{doc_id}")
+async def document_websocket(websocket: WebSocket, doc_id: int):
+    await manager.connect(websocket, doc_id)
+    try:
+        while True:
+            # Keep connection alive
+            data = await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, doc_id)
 
 if __name__ == "__main__":
     import uvicorn

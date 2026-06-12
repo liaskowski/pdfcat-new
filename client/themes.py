@@ -45,13 +45,29 @@ class ThemeManager:
         return cls._instance
         
     def load_fonts(self):
+        from PyQt6.QtGui import QFontDatabase, QFont
+        from PyQt6.QtWidgets import QApplication
+        
         base_path = os.path.dirname(os.path.abspath(__file__))
         fonts_dir = os.path.join(base_path, "assets", "fonts")
         font_files = ["Inter-Regular.ttf", "Inter-Medium.ttf", "Inter-Regular.otf", "Inter-Medium.otf"]
+        
+        loaded_any = False
         for f in font_files:
             p = os.path.join(fonts_dir, f)
-            if os.path.exists(p): QFontDatabase.addApplicationFont(p)
-    
+            if os.path.exists(p):
+                res = QFontDatabase.addApplicationFont(p)
+                if res != -1:
+                    loaded_any = True
+        
+        if loaded_any:
+            # Set global application font to ensure it's used everywhere
+            # "Inter" is the family name for these files
+            app_font = QFont("Inter")
+            # Set a fallback just in case
+            app_font.setStyleHint(QFont.StyleHint.SansSerif)
+            QApplication.setFont(app_font)
+
     def set_theme(self, theme_name: str):
         from PyQt6.QtCore import QSettings
         self.current_theme = theme_name
@@ -70,11 +86,13 @@ class ThemeManager:
 # BASE COMPONENT STYLES
 # ==============================================================================
 BASE_QSS = """
-* { font-family: "Inter", "Segoe UI", sans-serif; font-size: 12px; outline: none; }
+* { font-family: "Inter", "Segoe UI", sans-serif; outline: none; }
 QGroupBox { font-weight: bold; border: 1px solid palette(border); border-radius: 8px; margin-top: 15px; padding-top: 15px; }
+
 QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }
 QTableWidget { gridline-color: transparent; border: 1px solid palette(border); border-radius: 6px; }
-QHeaderView::section { padding: 8px; border: none; font-weight: bold; }
+QHeaderView::section { padding: 8px; border: none; font-weight: bold; background-color: palette(background); color: palette(text); }
+QTreeView { outline: none; border: none; }
 QPushButton { border-radius: 6px; padding: 8px 16px; font-weight: 500; }
 QPushButton[iconOnly="true"] { padding: 4px; border: none; background: transparent; }
 QComboBox { border-radius: 6px; padding: 5px 10px; border: 1px solid palette(border); }
@@ -85,13 +103,15 @@ QTabBar::tab { padding: 10px 20px; border: 1px solid palette(border); border-bot
 QTabBar::tab:selected { background-color: palette(surface); color: palette(primary); font-weight: bold; border-bottom: 1px solid palette(surface); }
 QTabBar::tab:hover:!selected { background-color: palette(hover); }
 
-QScrollBar:vertical { background: transparent; width: 10px; margin: 0px; }
-QScrollBar::handle:vertical { background: palette(scrollbar_handle); border-radius: 5px; min-height: 20px; margin: 2px; }
+QScrollBar:vertical { background: transparent; width: 8px; margin: 0px; }
+QScrollBar::handle:vertical { background: palette(scrollbar_handle); border-radius: 4px; min-height: 20px; margin: 1px; }
+QScrollBar::handle:vertical:hover { background: palette(primary); }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }
 
-QScrollBar:horizontal { background: transparent; height: 10px; margin: 0px; }
-QScrollBar::handle:horizontal { background: palette(scrollbar_handle); border-radius: 5px; min-width: 20px; margin: 2px; }
+QScrollBar:horizontal { background: transparent; height: 8px; margin: 0px; }
+QScrollBar::handle:horizontal { background: palette(scrollbar_handle); border-radius: 4px; min-width: 20px; margin: 1px; }
+QScrollBar::handle:horizontal:hover { background: palette(primary); }
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0px; }
 QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: none; }
 
@@ -108,8 +128,16 @@ QMainWindow, QDialog, QMessageBox, QScrollArea, QStackedWidget, #root, QScrollAr
     background-color: #F0F0F2; 
     color: #2C2C2E; 
 }
-QScrollArea { border: none; }
 QAbstractScrollArea::viewport { background-color: #F0F0F2; }
+
+QTreeWidget#list { background: transparent; border: none; padding: 2px; }
+QTreeWidget#list::item { height: 32px; border-radius: 6px; margin: 1px 2px; padding-left: 0px; color: #2C2C2E; border: none; }
+QTreeWidget#list::item:hover { background-color: rgba(0, 0, 0, 0.05); }
+QTreeWidget#list::item:selected { background-color: rgba(0, 122, 255, 0.12); color: #007AFF; font-weight: bold; }
+QTreeWidget#list::branch { background: transparent; border: none; }
+QTreeWidget#list::branch:selected { background: transparent; }
+QTreeView { outline: 0; selection-background-color: transparent; }
+QTreeView::item { border: none; outline: none; }
 
 QWidget { color: #2C2C2E; }
 QLabel, QCheckBox, QRadioButton, QGroupBox { color: #2C2C2E; background: transparent; }
@@ -152,8 +180,16 @@ QMainWindow, QDialog, QMessageBox, QScrollArea, QStackedWidget, #root, QScrollAr
     background-color: #121212; 
     color: #EBEBF5; 
 }
-QScrollArea { border: none; }
 QAbstractScrollArea::viewport { background-color: #121212; }
+
+QTreeWidget#list { background: transparent; border: none; padding: 2px; }
+QTreeWidget#list::item { height: 32px; border-radius: 6px; margin: 1px 2px; padding-left: 0px; color: #EBEBF5; border: none; }
+QTreeWidget#list::item:hover { background-color: rgba(255, 255, 255, 0.05); }
+QTreeWidget#list::item:selected { background-color: rgba(10, 132, 255, 0.15); color: #0A84FF; font-weight: bold; }
+QTreeWidget#list::branch { background: transparent; border: none; }
+QTreeWidget#list::branch:selected { background: transparent; }
+QTreeView { outline: 0; selection-background-color: transparent; }
+QTreeView::item { border: none; outline: none; }
 
 QWidget { color: #EBEBF5; }
 QLabel, QCheckBox, QRadioButton, QGroupBox { color: #EBEBF5; background: transparent; }

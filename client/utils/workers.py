@@ -337,11 +337,16 @@ class MetadataWorker(QThread):
         super().__init__()
         self.api = api
         self.document_id = document_id
+        self._stop = False
+
+    def stop(self):
+        self._stop = True
 
     def run(self):
         try:
             doc = self.api.get_document(self.document_id)
-            self.finished.emit(doc)
+            if not self._stop:
+                self.finished.emit(doc)
         except Exception as e:
             self.error.emit(str(e))
 
@@ -353,13 +358,27 @@ class DownloadWorker(QThread):
         super().__init__()
         self.api = api
         self.document_id = document_id
+        self._stop = False
+
+    def stop(self):
+        self._stop = True
 
     def run(self):
         try:
-            content = self.api.download_document(self.document_id)
-            self.finished.emit(self.document_id, content)
+            # Increase timeout for large downloads
+            old_timeout = self.api._timeout
+            self.api._timeout = 300 # 5 minutes for large files
+            try:
+                content = self.api.download_document(self.document_id)
+                if not content:
+                    raise RuntimeError("Downloaded file is empty")
+                if not self._stop:
+                    self.finished.emit(self.document_id, content)
+            finally:
+                self.api._timeout = old_timeout
         except Exception as e:
-            self.error.emit(str(e))
+            if not self._stop:
+                self.error.emit(str(e))
 
 class SearchWorker(QThread):
     finished = pyqtSignal(list)
@@ -373,19 +392,24 @@ class SearchWorker(QThread):
         self.folder_id = folder_id
         self.owner_id = owner_id
         self.load_all = load_all  # If True, load all files with pagination
+        self._stop = False
+
+    def stop(self):
+        self._stop = True
 
     def run(self):
         try:
             if self.query:
                 docs = self.api.search_documents(query=self.query)
-                self.finished.emit(docs)
+                if not self._stop:
+                    self.finished.emit(docs)
             elif self.load_all:
                 # Load ALL files with pagination (infinite scroll support)
                 all_docs = []
                 skip = 0
                 limit = 100  # Load in batches of 100
                 
-                while True:
+                while not self._stop:
                     batch = self.api.list_documents(
                         view_mode=self.view_mode,
                         folder_id=self.folder_id,
@@ -405,7 +429,8 @@ class SearchWorker(QThread):
                     if skip >= 10000:
                         break
                 
-                self.finished.emit(all_docs)
+                if not self._stop:
+                    self.finished.emit(all_docs)
             else:
                 # Load only first batch (for infinite scroll)
                 docs = self.api.list_documents(
@@ -541,6 +566,10 @@ class OCRSearchWorker(QThread):
         # Ensure query is clean and lowercased
         self.query = " ".join(query.lower().strip().split())
         self.page_width, self.page_height = page_size
+        self._stop = False
+
+    def stop(self):
+        self._stop = True
 
     def run(self):
         try:
@@ -548,6 +577,7 @@ class OCRSearchWorker(QThread):
             img_raw = Image.open(io.BytesIO(self.pixmap_data))
             logging.debug(f"DEBUG: Image size sent to OCR: {img_raw.width}x{img_raw.height}")
             
+            if self._stop: return
             img = img_raw.convert("L")
             
             # Detect orientation
@@ -561,6 +591,8 @@ class OCRSearchWorker(QThread):
             except Exception:
                 pass
 
+            if self._stop: return
+
             # Get verbose data including coordinates
             raw_data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT, lang='rus+eng+pol', config=self.tesseract_config)
             
@@ -573,6 +605,7 @@ class OCRSearchWorker(QThread):
             raw_count = len(raw_data['text'])
 
             for i in range(raw_count):
+                if self._stop: break
                 text = str(raw_data['text'][i]).lower().strip()
                 if not text: continue
                 
@@ -601,9 +634,11 @@ class OCRSearchWorker(QThread):
                     highlights.append(QRectF(final_x, final_y, final_w, final_h))
 
             logging.debug(f"OCR: Found {len(highlights)} potential matches")
-            self.results_found.emit(highlights)
+            if not self._stop:
+                self.results_found.emit(highlights)
         except Exception as e:
             logging.error(f"OCR Error: {str(e)}")
             self.error.emit(str(e))
         finally:
-            self.finished.emit()
+            if not self._stop:
+                self.finished.emit()

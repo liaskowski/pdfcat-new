@@ -72,7 +72,8 @@
         "owner_is_you": "Jesteś właścicielem tego pliku",
         "owner_status": "Właściciel: {name}",
         "collaborative_editing": ". Wspólne edytowanie włączone.",
-        "read_only_access": ". Dostęp tylko do odczytu."
+        "read_only_access": ". Dostęp tylko do odczytu.",
+        "loading": "Ładowanie podglądu..."
     },
     "profile": {
         "title": "Mój profil",

@@ -403,7 +403,7 @@ class ModernPDFViewer(QWidget):
         
         try:
             if isinstance(source, bytes):
-                self._doc = fitz.open(stream=source, filetype="pdf")
+                self._doc = fitz.open(stream=source) # Auto-detect
             else:
                 self._doc = fitz.open(source)
 

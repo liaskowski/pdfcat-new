@@ -5,7 +5,7 @@ import secrets
 from pathlib import Path
 from typing import Optional, Any, TYPE_CHECKING
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QThreadPool, QRunnable, QObject
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QThreadPool, QRunnable, QObject, QStandardPaths
 from PyQt6.QtWidgets import QMessageBox, QFileDialog, QInputDialog, QProgressDialog, QDialog
 
 from ...api.schemas import APIDocument, APIFolder
@@ -418,31 +418,92 @@ class FileOperations:
         self.controller._trigger_immediate_sync()
 
     def on_open_file_clicked(self, doc_id: int, search_query: str = None):
+        # 1. Check local cache first
+        cache_dir = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.CacheLocation)
+        pdf_cache_path = os.path.join(cache_dir, "pdflib", "pdf_cache")
+        os.makedirs(pdf_cache_path, exist_ok=True)
+
+        # We need metadata to check the version (upload_date)
         self.controller.update_status(self.controller.translator.tr("common.loading"), 0)
+        
+        # Show a non-blocking progress indicator if possible, or just status
+        # For now, let's use a progress dialog for a better UX on long downloads
+        self._open_progress = QProgressDialog(self.controller.translator.tr("common.loading"), None, 0, 0, self.view)
+        self._open_progress.setWindowModality(Qt.WindowModality.WindowModal)
+        self._open_progress.setMinimumDuration(500)
+        self._open_progress.show()
+
         from ...utils.workers import MetadataWorker
+        
+        if hasattr(self, '_metadata_worker') and self._metadata_worker.isRunning():
+            self._metadata_worker.stop()
+            self._metadata_worker.wait(500)
+        
         self._metadata_worker = MetadataWorker(self.api, doc_id)
-        self._metadata_worker.finished.connect(lambda doc: self._start_open_download(doc, search_query))
-        self._metadata_worker.error.connect(lambda e: self.controller._show_error(self.controller.translator.tr("common.error"), str(e)))
+        self._metadata_worker.finished.connect(lambda doc: self._check_cache_and_download(doc, search_query, pdf_cache_path))
+        self._metadata_worker.error.connect(self._on_open_error)
         self._metadata_worker.start()
 
-    def _start_open_download(self, doc: APIDocument, search_query: str):
+    def _on_open_error(self, error_msg):
+        if hasattr(self, '_open_progress'):
+            self._open_progress.close()
+        self.controller._show_error(self.controller.translator.tr("common.error"), str(error_msg))
+
+    def _check_cache_and_download(self, doc: APIDocument, search_query: str, cache_path: str):
+        # Create a unique filename based on ID and upload date to handle updates
+        # Sanitize upload_date for filename
+        date_slug = doc.upload_date.replace(":", "-").replace(" ", "_")
+        cache_file = os.path.join(cache_path, f"{doc.id}_{date_slug}.pdf")
+
+        if os.path.exists(cache_file):
+            log_debug("file_operations", f"Cache hit for doc {doc.id}: {cache_file}")
+            if hasattr(self, '_open_progress'):
+                self._open_progress.close()
+            self._on_open_finished(cache_file, doc, search_query)
+            return
+
+        # Not in cache, download
+        log_debug("file_operations", f"Cache miss for doc {doc.id}, downloading...")
+        if hasattr(self, '_open_progress'):
+            self._open_progress.setLabelText(f"{self.controller.translator.tr('common.loading')} {doc.title}...")
+
         from ...utils.workers import DownloadWorker
+        if hasattr(self, '_open_worker') and self._open_worker.isRunning():
+            self._open_worker.stop()
+            self._open_worker.wait(500)
+
         self._open_worker = DownloadWorker(self.api, doc.id)
-        self._open_worker.finished.connect(lambda did, content: self._on_open_finished(content, doc, search_query))
-        self._open_worker.error.connect(lambda e: self.controller._show_error(self.controller.translator.tr("common.error"), str(e)))
+        self._open_worker.finished.connect(lambda did, content: self._save_to_cache_and_open(content, doc, search_query, cache_file))
+        self._open_worker.error.connect(self._on_open_error)
         self._open_worker.start()
 
-    def _on_open_finished(self, content: bytes, doc: APIDocument, search_query: str):
+    def _save_to_cache_and_open(self, content: bytes, doc: APIDocument, search_query: str, cache_file: str):
         try:
+            # Save to cache for next time
+            Path(cache_file).write_bytes(content)
+            log_debug("file_operations", f"Saved doc {doc.id} to cache: {cache_file}")
+            
+            if hasattr(self, '_open_progress'):
+                self._open_progress.close()
+            self._on_open_finished(cache_file, doc, search_query)
+        except Exception as e:
+            log_error("file_operations", f"Failed to save to cache or open: {e}")
+            # Fallback: try opening without cache if write failed
             fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
             os.close(fd)
             Path(tmp_path).write_bytes(content)
+            
+            if hasattr(self, '_open_progress'):
+                self._open_progress.close()
+            self._on_open_finished(tmp_path, doc, search_query)
 
+    def _on_open_finished(self, file_path: str, doc: APIDocument, search_query: str):
+        try:
             # Use original TITLE from database (user-entered name), not server filename
             window_title = doc.title or doc.filename or f"Document_{doc.id}"
 
             self.controller._viewer_window = FileViewerWindow(
-                tmp_path,
+                file_path,
                 self.controller.config.get("theme") == "Dark",
                 title=window_title,  # Use original title as window title
                 password=doc.encryption_key

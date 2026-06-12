@@ -502,9 +502,12 @@ class MainController:
         # Use sys.executable and -m client.main to ensure proper module loading
         # Wrapping in quotes is handled by subprocess when passing as list
         args = [sys.executable, "-m", "client.main"]
+        cwd = os.getcwd() # Project Root if started from start_all.py
         
         try:
-            subprocess.Popen(args)
+            env = os.environ.copy()
+            env["PYTHONPATH"] = cwd
+            subprocess.Popen(args, cwd=cwd, env=env)
             QApplication.quit()
             sys.exit(0)
         except Exception as e:

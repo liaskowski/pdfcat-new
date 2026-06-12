@@ -26,7 +26,7 @@ class InitialRenderWorker(QRunnable):
         doc = None
         try:
             if isinstance(self.source, bytes):
-                doc = fitz.open(stream=self.source, filetype="pdf")
+                doc = fitz.open(stream=self.source) # Auto-detect type (allows XPS, CBZ, images)
             else:
                 doc = fitz.open(self.source)
             
@@ -91,7 +91,7 @@ class PageRenderWorker(QRunnable):
         doc = None
         try:
             if isinstance(self.source, bytes):
-                doc = fitz.open(stream=self.source, filetype="pdf")
+                doc = fitz.open(stream=self.source) # Auto-detect type (allows XPS, CBZ, images)
             else:
                 doc = fitz.open(self.source)
             

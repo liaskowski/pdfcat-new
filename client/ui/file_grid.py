@@ -1,45 +1,20 @@
 """
-Document grid. Senior-level optimization: hardware-accelerated animations & zero-clipping UI.
+High-Performance Document Grid. 
+Manual painting for zero-clipping, zero-crash, and fluid animations.
 """
 from typing import Optional, List
 from PyQt6.QtCore import pyqtSignal, Qt, QSize, QThreadPool, QStandardPaths, QByteArray, QBuffer, QTimer, QRect, QPoint, QPointF, QPropertyAnimation, QEasingCurve, pyqtProperty
-from PyQt6.QtGui import QIcon, QPainter, QColor, QBrush, QPixmap, QPen, QLinearGradient
+from PyQt6.QtGui import QIcon, QPainter, QColor, QBrush, QPixmap, QPen, QLinearGradient, QFont, QFontMetrics
 from PyQt6.QtWidgets import (
     QFrame, QVBoxLayout, QHBoxLayout, QLabel, QMenu, QWidget,
-    QScrollArea, QGridLayout, QSizePolicy, QLayout, QGraphicsOpacityEffect
+    QScrollArea, QGridLayout, QSizePolicy, QLayout
 )
-import json, os, sys, subprocess
+import json, os, sys
 
 from ..api_manager import APIManager, APIDocument
 from .thumbnail_runnable import ThumbnailRunnable
 from ..utils.translator import Translator
 from ..themes import ThemeManager
-import qtawesome as qta
-
-class FlowLayout(QLayout):
-    def __init__(self, parent=None, sp=3):
-        super().__init__(parent); self._sp = sp; self._it = []
-    def addItem(self, i): self._it.append(i)
-    def count(self): return len(self._it)
-    def itemAt(self, i): return self._it[i] if 0 <= i < len(self._it) else None
-    def takeAt(self, i): return self._it.pop(i) if 0 <= i < len(self._it) else None
-    def expandingDirections(self): return Qt.Orientation(0)
-    def hasHeightForWidth(self): return True
-    def heightForWidth(self, w): return self._do(QRect(0,0,w,0), True)
-    def setGeometry(self, r): super().setGeometry(r); self._do(r, False)
-    def sizeHint(self): return self.minimumSize()
-    def minimumSize(self):
-        s = QSize(); m = self.contentsMargins()
-        for i in self._it: s = s.expandedTo(i.minimumSize())
-        return s + QSize(m.left()+m.right(), m.top()+m.bottom())
-    def _do(self, r, t):
-        x,y,lh = r.x(),r.y(),0
-        for i in self._it:
-            w = i.sizeHint().width()
-            if x+w > r.right() and lh>0: x,y,lh = r.x(),y+lh+self.spacing(),0
-            if not t: i.setGeometry(QRect(QPoint(x,y), i.sizeHint()))
-            x += w+self._sp; lh = max(lh, i.sizeHint().height())
-        return y+lh-r.y()
 
 
 class DocumentTileWidget(QWidget):
@@ -48,134 +23,134 @@ class DocumentTileWidget(QWidget):
     def __init__(self, doc: APIDocument, parent=None):
         super().__init__(parent)
         self.doc = doc; self._sel = False; self._hover = False
-        self._scale = 1.0
-        self.setFixedSize(185, 235)
+        self._opacity = 0.0; self._scale = 1.0; self._thumb_pm = None
+        self.setFixedSize(180, 220)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setAttribute(Qt.WidgetAttribute.WA_Hover)
         
-        # Opacity effect specifically for entrance, will be disabled after animation to save GPU
-        self._eff = QGraphicsOpacityEffect(self)
-        self._eff.setOpacity(0.0)
-        self.setGraphicsEffect(self._eff)
-
-        # Tooltip
+        # Tooltip with clear colors
+        tm = ThemeManager(); dark = tm.current_theme == "Dark"
+        txt_sec = tm.get_color("text_secondary")
         size_str = f"{doc.file_size / (1024*1024):.1f} MB" if doc.file_size and doc.file_size > 1024*1024 else f"{(doc.file_size or 0)/1024:.1f} KB"
-
-        tm = ThemeManager()
-        secondary_col = tm.get_color("text_secondary")
-        path_str = doc.folder_full_path if hasattr(doc, 'folder_full_path') and doc.folder_full_path else None
-        loc_str = f"Location: 📂 {path_str}" if path_str else "Location: 🏠 Root"
-
+        path_str = doc.folder_full_path if hasattr(doc, 'folder_full_path') and doc.folder_full_path else "Root"
+        
         info = [
-            f"<p style='white-space:pre'><b>{doc.title}</b></p>",
+            f"<b>{doc.title}</b>",
             f"Size: {size_str}",
             f"Owner: {doc.owner_username or 'N/A'}",
-            f"<span style='color:{secondary_col}'>{loc_str}</span>"
+            f"<span style='color:{txt_sec}'>At: 📂 {path_str}</span>"
         ]
         if doc.notes: info.append(f"<hr><i>{doc.notes[:60]}...</i>")
         self.setToolTip("<br>".join(info))
 
-        tm = ThemeManager(); dark = tm.current_theme == "Dark"
-        txt = tm.get_color("text"); muted = tm.get_color("hover") if dark else "#E8E8E8"
-
-        lay = QVBoxLayout(self); lay.setContentsMargins(12, 12, 12, 12); lay.setSpacing(5)
-        
-        self.thumb_container = QFrame()
-        self.thumb_container.setFixedSize(162, 110)
-        self.thumb_container.setStyleSheet(f"background-color:{muted}; border-radius:6px;")
-        t_lay = QVBoxLayout(self.thumb_container); t_lay.setContentsMargins(0,0,0,0)
-        
-        self.thumb = QLabel()
-        self.thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        t_lay.addWidget(self.thumb)
-        lay.addWidget(self.thumb_container, 0, Qt.AlignmentFlag.AlignHCenter)
-
-        self.title_lbl = QLabel(doc.title or "Untitled")
-        self.title_lbl.setWordWrap(True); self.title_lbl.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
-        f = self.title_lbl.font(); f.setBold(True); f.setPixelSize(11); self.title_lbl.setFont(f)
-        self.title_lbl.setStyleSheet(f"color:{txt};")
-        lay.addWidget(self.title_lbl)
-
-        self.tags_box = QWidget(); self.tags_fl = FlowLayout(self.tags_box, sp=3)
-        lay.addWidget(self.tags_box)
-        self._tag_bg = tm.get_color("primary") if dark else "rgba(0,122,255,0.12)"
-        self._tag_fg = tm.get_color("white") if dark else "rgba(0,0,0,0.75)"
-        self._tags()
-        self._sel_col = "#3b82f6" if dark else "#007AFF"
-        
-        # Pre-render folder shortcut icon
-        self._folder_icon_px = None
-        if doc.folder_id:
-            icon_color = tm.get_color("primary")
-            self._folder_icon_px = qta.icon('fa5s.folder', color=icon_color).pixmap(16, 16)
-        elif hasattr(doc, 'folder_full_path') and doc.folder_full_path:
-            # Backup check if folder_id is not enough
-            icon_color = tm.get_color("primary")
-            self._folder_icon_px = qta.icon('fa5s.folder', color=icon_color).pixmap(16, 16)
+        self._sel_col = QColor("#3b82f6" if dark else "#007AFF")
+        self._bg_muted = QColor(tm.get_color("hover") if dark else "#E8E8E8")
+        self._txt_col = QColor(tm.get_color("text"))
 
     @pyqtProperty(float)
     def scale_val(self): return self._scale
     @scale_val.setter
     def scale_val(self, v): self._scale = v; self.update()
 
-    def _tags(self):
-        while self.tags_fl.count(): self.tags_fl.takeAt(0)
-        if not self.doc.tags: self.tags_box.hide(); return
-        self.tags_box.show()
-        tags = [t.strip() for t in self.doc.tags.split(',') if t.strip()]
-        for tag in tags[:2]:
-            lb = QLabel(f"#{tag}")
-            lb.setStyleSheet(f"background-color:{self._tag_bg}; color:{self._tag_fg}; border-radius:4px; padding:1px 4px; font-size:9px;")
-            self.tags_fl.addWidget(lb)
-
     def start_entrance_anim(self, delay=0):
-        self._anim = QPropertyAnimation(self._eff, b"opacity")
-        self._anim.setDuration(500); self._anim.setStartValue(0.0); self._anim.setEndValue(1.0)
-        self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        # Cleanup effect after animation to prevent scroll lag
-        self._anim.finished.connect(lambda: self.setGraphicsEffect(None))
-        QTimer.singleShot(delay, self._anim.start)
+        self._t = QTimer(self); self._t.timeout.connect(self._fade_tick)
+        # Fix: PyQt6 singleShot doesn't support passing arguments to slot directly as 3rd param
+        QTimer.singleShot(delay, lambda: self._t.start(16))
+
+    def _fade_tick(self):
+        self._opacity += 0.08
+        if self._opacity >= 1.0: self._opacity = 1.0; self._t.stop()
+        self.update()
 
     def set_thumbnail(self, pm):
-        if not pm.isNull(): self.thumb.setPixmap(pm.scaled(160, 105, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        if not pm.isNull():
+            self._thumb_pm = pm.scaled(160, 105, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            self.update()
 
     def enterEvent(self, ev):
         self._hover = True
-        self._h_anim = QPropertyAnimation(self, b"scale_val")
-        self._h_anim.setDuration(150); self._h_anim.setEndValue(1.05); self._h_anim.start()
+        self._anim = QPropertyAnimation(self, b"scale_val")
+        self._anim.setDuration(150); self._anim.setEndValue(1.04); self._anim.start()
+        
+        # UX: Show detailed info in status bar
+        p = self.parent()
+        while p and not hasattr(p, 'api'): p = p.parent()
+        if hasattr(p, 'view') and hasattr(p.view, 'statusBar'):
+            path_str = self.doc.folder_full_path if hasattr(self.doc, 'folder_full_path') and self.doc.folder_full_path else "Root"
+            size_str = f"{self.doc.file_size / (1024*1024):.1f} MB" if self.doc.file_size and self.doc.file_size > 1024*1024 else f"{(self.doc.file_size or 0)/1024:.1f} KB"
+            msg = f"📄 {self.doc.title} | {size_str} | 📂 {path_str} | Owner: {self.doc.owner_username or 'N/A'}"
+            p.view.statusBar().showMessage(msg)
+            
         super().enterEvent(ev)
 
     def leaveEvent(self, ev):
         self._hover = False
-        self._h_anim = QPropertyAnimation(self, b"scale_val")
-        self._h_anim.setDuration(150); self._h_anim.setEndValue(1.0); self._h_anim.start()
+        self._anim = QPropertyAnimation(self, b"scale_val")
+        self._anim.setDuration(150); self._anim.setEndValue(1.0); self._anim.start()
+        
+        # UX: Clear status bar
+        p = self.parent()
+        while p and not hasattr(p, 'api'): p = p.parent()
+        if hasattr(p, 'view') and hasattr(p.view, 'statusBar'):
+            p.view.statusBar().clearMessage()
+            
         super().leaveEvent(ev)
 
     def set_selected(self, sel): self._sel = sel; self.update()
 
     def paintEvent(self, ev):
         p = QPainter(self); p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setOpacity(self._opacity)
         
-        # Scale the whole canvas slightly on hover
+        # 1. Coordinate System for Zoom
         if self._scale != 1.0:
             p.translate(self.width()/2, self.height()/2)
             p.scale(self._scale, self._scale)
             p.translate(-self.width()/2, -self.height()/2)
 
-        # Draw Folder Shortcut Indicator if document is in a subfolder
-        if self._folder_icon_px:
-            # Position: bottom right of the thumbnail area
-            p.drawPixmap(self.width() - 32, 95, self._folder_icon_px)
-
+        # 2. Draw Selection/Hover Background
+        rect = self.rect().adjusted(6, 6, -6, -6)
         if self._sel or self._hover:
-            r = self.rect().adjusted(6, 6, -6, -6).toRectF()
             col = QColor(self._sel_col)
             if self._hover and not self._sel: col.setAlpha(100)
             p.setPen(QPen(col, 2))
             p.setBrush(QBrush(QColor(col.red(), col.green(), col.blue(), 25)))
-            p.drawRoundedRect(r, 10, 10)
+            p.drawRoundedRect(rect, 10, 10)
+
+        # 3. Draw Thumbnail Area
+        thumb_r = QRect(10, 10, 160, 110)
+        p.setPen(Qt.PenStyle.NoPen); p.setBrush(self._bg_muted)
+        p.drawRoundedRect(thumb_r, 6, 6)
+        
+        if self._thumb_pm:
+            # Center thumb in area
+            tx = thumb_r.x() + (thumb_r.width() - self._thumb_pm.width()) // 2
+            ty = thumb_r.y() + (thumb_r.height() - self._thumb_pm.height()) // 2
+            p.drawPixmap(tx, ty, self._thumb_pm)
+
+        # 4. Draw Title
+        p.setPen(self._txt_col)
+        font = p.font(); font.setBold(True); font.setPixelSize(11); p.setFont(font)
+        title_rect = QRect(12, 125, 156, 40)
+        p.drawText(title_rect, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter | Qt.TextFlag.TextWordWrap, self.doc.title or "Untitled")
+
+        # 5. Draw Tags (Simple labels)
+        if self.doc.tags:
+            tags = [t.strip() for t in self.doc.tags.split(',') if t.strip()]
+            cur_x = 12
+            font.setBold(False); font.setPixelSize(9); p.setFont(font)
+            for tag in tags[:2]:
+                txt = f"#{tag}"
+                tw = QFontMetrics(font).horizontalAdvance(txt) + 8
+                if cur_x + tw > 168: break
+                tag_r = QRect(cur_x, 175, tw, 16)
+                p.setBrush(QBrush(QColor(self._sel_col.red(), self._sel_col.green(), self._sel_col.blue(), 40)))
+                p.drawRoundedRect(tag_r, 4, 4)
+                p.setPen(self._txt_col if self.doc.is_private else self._sel_col)
+                p.drawText(tag_r, Qt.AlignmentFlag.AlignCenter, txt)
+                cur_x += tw + 4
+        
         p.end()
-        super().paintEvent(ev)
 
     def mousePressEvent(self, ev):
         if ev.button() == Qt.MouseButton.LeftButton: self.clicked.emit(self.doc)
@@ -202,7 +177,63 @@ class FileGrid(QFrame):
         self._me_id = None; self._me_role = None; self._clip = None; self._sel = None
         self.setObjectName("card"); self._pool = QThreadPool(); self._pool.setMaxThreadCount(4)
         self._cache = {}; self._files = []; self._loading = set(); self._sort = None; self._tiles = {}; self._last_cols = -1
+        
+        # UX Improvements
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setAcceptDrops(True)
+        
         self._load_cache(); self._build()
+
+    def dragEnterEvent(self, ev):
+        if ev.mimeData().hasUrls(): ev.acceptProposedAction()
+    
+    def dropEvent(self, ev):
+        urls = ev.mimeData().urls()
+        paths = [u.toLocalFile() for u in urls if u.toLocalFile().lower().endswith(('.pdf', '.dxf'))]
+        if paths:
+            # Emit a signal or call a method to handle upload
+            # We can use the parent's controller to trigger upload
+            p = self.parent()
+            while p and not hasattr(p, 'api'): p = p.parent()
+            if hasattr(p, 'file_ops'):
+                # Get current folder from navigation tree
+                selected_items = p.ui.nav_tree.selectedItems()
+                folder_id = None; is_public = False
+                if selected_items:
+                    data = selected_items[0].data(0, Qt.ItemDataRole.UserRole)
+                    from ..api_manager import APIFolder
+                    if isinstance(data, APIFolder):
+                        folder_id = data.id; is_public = data.is_public
+                
+                p.file_ops.start_upload_worker(paths, folder_id, is_public)
+        ev.acceptProposedAction()
+
+    def keyPressEvent(self, ev):
+        if not self._files: return super().keyPressEvent(ev)
+        
+        idx = -1
+        if self._sel:
+            try: idx = self._files.index(self._sel.doc)
+            except: pass
+            
+        cols = max(3, self._sa.width() // 200 if self._sa.width() > 0 else 4)
+        
+        if ev.key() == Qt.Key.Key_Right: idx += 1
+        elif ev.key() == Qt.Key.Key_Left: idx -= 1
+        elif ev.key() == Qt.Key.Key_Down: idx += cols
+        elif ev.key() == Qt.Key.Key_Up: idx -= cols
+        elif ev.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            if self._sel: self.open_requested.emit(self._sel.doc.id)
+            return
+        else:
+            return super().keyPressEvent(ev)
+            
+        if 0 <= idx < len(self._files):
+            self._clk(self._files[idx])
+            # Ensure visible
+            tile = self._tiles.get(self._files[idx].id)
+            if tile: self._sa.ensureWidgetVisible(tile)
+        ev.accept()
 
     def _build(self):
         lay = QVBoxLayout(self); lay.setContentsMargins(12,12,12,12); lay.setSpacing(10)
@@ -219,6 +250,10 @@ class FileGrid(QFrame):
         sa.verticalScrollBar().valueChanged.connect(lambda: self._timer.start(100))
         gc.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu); gc.customContextMenuRequested.connect(self._ctx)
 
+    def set_loading(self, loading: bool): pass # Implementation for status indicator if needed
+    def set_context(self, u, r): self._me_id, self._me_role = u, r
+    def set_clipboard_state(self, d): self._clip = d
+
     def rebuild_with_files(self, files, _icon=None, owner_id=None):
         self._pool.clear(); self._tiles = {}; self._sel = None; self._last_cols = -1
         while self._gl.count():
@@ -231,7 +266,7 @@ class FileGrid(QFrame):
         for i, f in enumerate(self._files):
             t = DocumentTileWidget(f); self._tiles[f.id] = t
             t.setProperty("did", f.id); t.clicked.connect(self._clk); self._gl.addWidget(t, r, c)
-            t.start_entrance_anim(min(800, i * 25))
+            t.start_entrance_anim(min(600, i * 20))
             if f.id in self._cache:
                 pm = self._cache[f.id].pixmap(QSize(160, 105))
                 if not pm.isNull(): t.set_thumbnail(pm)
@@ -264,6 +299,11 @@ class FileGrid(QFrame):
         while w and not isinstance(w, DocumentTileWidget): w = w.parent()
         doc = w.doc if isinstance(w, DocumentTileWidget) else None
         m = QMenu()
+        
+        # UX: Apply theme style to menu
+        m.setWindowFlags(m.windowFlags() | Qt.WindowType.FramelessWindowHint)
+        m.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        
         if doc:
             own, adm = (self._me_id is not None and doc.owner_id == self._me_id), (self._me_role == "admin")
             ce, cd, cdl = own or adm or doc.is_public_edit, own or adm, own or adm or not doc.is_read_only
@@ -277,10 +317,25 @@ class FileGrid(QFrame):
             if cd:
                 if not ce: m.addSeparator()
                 m.addAction(self.translator.tr("context_menu.delete")).triggered.connect(lambda: self.delete_requested.emit(doc))
+        else:
+            # Context menu for empty grid space
+            m.addAction(self.translator.tr("main.btn_upload")).triggered.connect(self._trigger_upload_dialog)
+            m.addAction(self.translator.tr("admin.refresh")).triggered.connect(self._trigger_refresh)
+
         if self._clip:
             if doc: m.addSeparator()
             m.addAction(self.translator.tr("context_menu.paste")).triggered.connect(lambda: self.paste_requested.emit())
         m.exec(self._gc.mapToGlobal(pt))
+
+    def _trigger_upload_dialog(self):
+        p = self.parent()
+        while p and not hasattr(p, 'file_ops'): p = p.parent()
+        if p: p.file_ops.on_add_pdf_clicked()
+
+    def _trigger_refresh(self):
+        p = self.parent()
+        while p and not hasattr(p, 'search_handler'): p = p.parent()
+        if p: p.search_handler.fetch_from_server(force_fresh=True)
 
     def _load_vis(self):
         if not self._files: return
@@ -304,7 +359,7 @@ class FileGrid(QFrame):
         c = QPixmap(pm); p = QPainter(c)
         try:
             p.setRenderHint(QPainter.RenderHint.Antialiasing); sz, mg = max(7,int(c.width()*0.09)), max(2,int(c.width()*0.03))
-            p.setBrush(QBrush(QColor("#22c55e"))); p.setPen(QPen(QColor("#fff"), 1)); p.drawEllipse(c.width()-sz-mg, mg, sz, sz)
+            p.setBrush(QBrush(QColor("#22c55e"))); p.setPen(QPen(QColor("#fff"), 1)); p.drawEllipse(int(c.width()-sz-mg), int(mg), int(sz), int(sz))
         finally: p.end()
         return c
 
@@ -316,7 +371,7 @@ class FileGrid(QFrame):
     def update_single_document(self, doc):
         t = self._tiles.get(doc.id)
         if not t: return False
-        t.doc = doc; t.title_lbl.setText(doc.title or "Untitled"); t._tags(); self._cache.pop(doc.id, None); self._loading.discard(doc.id)
+        t.doc = doc; self._cache.pop(doc.id, None); self._loading.discard(doc.id)
         w = ThumbnailRunnable(self.api, doc.id, QSize(328, 210)); w.signals.finished.connect(self._thumb); self._loading.add(doc.id); self._pool.start(w)
         return True
 
@@ -354,7 +409,7 @@ class FileGrid(QFrame):
             ca = {}
             for did, ic in self._cache.items():
                 try:
-                    pm = ic.pixmap(185, 235)
+                    pm = ic.pixmap(180, 220)
                     if not pm.isNull():
                         d = QByteArray(); buf = QBuffer(d); buf.open(QBuffer.OpenModeFlag.WriteOnly); pm.save(buf, "PNG", 80)
                         ca[str(did)] = bytes(d.toBase64()).decode('ascii')
@@ -373,8 +428,5 @@ class FileGrid(QFrame):
         except Exception as e: print(f"Error clearing thumbnail cache: {e}"); return False
 
     def _save_thumbnail_cache(self): self._save_cache()
-    def set_loading(self, l): pass
-    def set_context(self, u, r): self._me_id, self._me_role = u, r
-    def set_clipboard_state(self, d): self._clip = d
     def closeEvent(self, ev): self._save_cache(); self._pool.clear(); self._pool.waitForDone(1000); super().closeEvent(ev) if hasattr(super(), 'closeEvent') else None
     def resizeEvent(self, ev): super().resizeEvent(ev); self._repos()
