@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QComboBox,
     QCompleter,
+    QPushButton,
 )
 import qtawesome as qta
 
@@ -19,6 +20,7 @@ class SearchBar(QFrame):
     """
     search_triggered = pyqtSignal()
     shift_enter_pressed = pyqtSignal()
+    tag_toggle_clicked = pyqtSignal(bool)
 
     def __init__(self, api: APIManager, parent=None):
         super().__init__(parent)
@@ -78,9 +80,28 @@ class SearchBar(QFrame):
         self.file_type_combo.setObjectName("input")
         self.file_type_combo.setMinimumWidth(120)
 
+        # Tag Cloud Toggle
+        self.tag_btn = QPushButton()
+        self.tag_btn.setCheckable(True)
+        self.tag_btn.setIcon(qta.icon('fa5s.tags', color=self.theme_manager.get_icon_color()))
+        self.tag_btn.setToolTip(self.translator.tr("tag_explorer.tooltip"))
+        self.tag_btn.setFixedSize(36, 36)
+        self.tag_btn.setObjectName("tagToggleButton")
+        self.tag_btn.setStyleSheet("""
+            QPushButton { 
+                background: transparent; 
+                border-radius: 6px; 
+                border: 1px solid palette(border);
+            }
+            QPushButton:hover { background: palette(hover); }
+            QPushButton:checked { background: palette(primary); color: white; border: none; }
+        """)
+        self.tag_btn.toggled.connect(self.tag_toggle_clicked.emit)
+
         layout.addWidget(self.search_input, 1)
         layout.addWidget(self.category_combo, 0)
         layout.addWidget(self.file_type_combo, 0)
+        layout.addWidget(self.tag_btn, 0)
 
         self._connect_signals()
 

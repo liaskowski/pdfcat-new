@@ -101,7 +101,7 @@
     "upload": {
         "title_upload": "Prześlij PDF",
         "title_edit": "Edytuj dokument",
-        "title_view": "Zobacz szczegóły (tylko do odczytu)",
+        "title_view": "Zobacz szczegóły (tyлko do odczytu)",
         "title_edit_meta": "Edytuj metadane dokumentu",
         "tab_general": "Ogólne",
         "tab_history": "Historia",
@@ -261,7 +261,7 @@
         "font_size": "Podstawowy rozmiar czcionki",
         "data_management": "Zarządzanie danymi",
         "btn_manage": "Zarządzaj kategoriami i typami plików",
-        "btn_clear_cache": "Wyczyść pamięć podręczną ikon",
+        "btn_clear_cache": "Wyczyść pamięć podręczную ikon",
         "clear_cache_confirm_title": "Wyczyść pamięć podręczną ikon",
         "clear_cache_confirm_msg": "Czy na pewno chcesz wyczyścić wszystkie bufory miniaturek? Zostaną odtworzone przy następnym wyświetleniu.",
         "clear_cache_success_title": "Pamięć podręczna wyczyszczona",
@@ -307,5 +307,10 @@
         "action_keep_both": "Zachowaj oba (różna zawartość)",
         "action_cancel": "Anuluj przesyłanie",
         "content_different": "Zawartość wydaje się być inna"
+    },
+    "tag_explorer": {
+        "title": "Eksplorator tagów",
+        "filter_current": "Filtruj tylko bieżący folder",
+        "tooltip": "Eksploruj tagi"
     }
 }

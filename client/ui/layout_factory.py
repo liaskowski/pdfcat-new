@@ -5,6 +5,7 @@ from .navigation_tree import NavigationTree
 from .search_bar import SearchBar
 from .file_grid import FileGrid
 from .preview_panel import PreviewPanel
+from .components.tag_cloud_panel import TagCloudPanel
 from ..api_manager import APIManager
 from ..utils.translator import Translator
 from ..themes import ThemeManager
@@ -20,6 +21,7 @@ class LayoutFactory:
         self.file_grid = None
         self.preview_panel = None
         self.sort_combo = None
+        self.tag_cloud = None
 
     def create_sidebar_panel(self) -> QWidget:
         # ... existing implementation ...
@@ -69,6 +71,7 @@ class LayoutFactory:
         center_layout.setSpacing(12)
         
         self.search_bar = SearchBar(self.api)
+        self.tag_cloud = TagCloudPanel()
         
         # Toolbar Row
         toolbar = QWidget()
@@ -94,6 +97,7 @@ class LayoutFactory:
         self.file_grid = FileGrid(self.api)
         
         center_layout.addWidget(self.search_bar)
+        center_layout.addWidget(self.tag_cloud)
         center_layout.addWidget(toolbar)
         center_layout.addWidget(self.file_grid, 1)
         

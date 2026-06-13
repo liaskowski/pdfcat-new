@@ -6,11 +6,11 @@ import qtawesome as qta
 from pathlib import Path
 from typing import Optional, Any
 
-from PyQt6.QtCore import Qt, QSettings, QByteArray
+from PyQt6.QtCore import Qt, QSettings, QByteArray, QTimer
 from PyQt6.QtWidgets import (
     QMessageBox, QApplication, QDialog
 )
-from PyQt6.QtGui import QPixmap
+
 
 from ...api_manager import APIDocument, APIFolder, APIUser
 from ..auth_dialog import ServerSelectionDialog, LoginDialog
@@ -168,11 +168,16 @@ class MainController:
         self.ui.add_pdf_btn.clicked.connect(self.file_ops.on_add_pdf_clicked)
         self.ui.sort_combo.currentIndexChanged.connect(self._on_sort_changed)
 
+        # Tag Cloud Signals
+        self.ui.search_bar.tag_toggle_clicked.connect(self.ui.tag_cloud.setVisible)
+        self.ui.tag_cloud.tag_selected.connect(self.search_handler.toggle_tag)
+        self.ui.tag_cloud.filter_mode_changed.connect(self.search_handler.set_tag_filter_current_view)
+
         # Drag and Drop
         self.view.drop_event_requested.connect(self.handle_drop)
         
-        # Auto-refresh timer (Sync) - Start with 10 second interval
-        from PyQt6.QtCore import QTimer
+        # Auto-refresh timer
+
         self.refresh_timer = QTimer(self.view)
         self.refresh_timer.timeout.connect(self._auto_refresh)
         self.refresh_timer.start(10000) # Every 10 seconds

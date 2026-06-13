@@ -26,6 +26,7 @@ class MainLayout:
         self.nav_tree = None
         self.add_pdf_btn = None
         self.search_bar = None
+        self.tag_cloud = None
         self.breadcrumbs = None
         self.file_grid = None
         self.sort_combo = None
@@ -86,6 +87,7 @@ class MainLayout:
         self.nav_tree = self.layout_factory.nav_tree
         self.add_pdf_btn = self.layout_factory.add_pdf_btn
         self.search_bar = self.layout_factory.search_bar
+        self.tag_cloud = self.layout_factory.tag_cloud
         self.breadcrumbs = self.layout_factory.breadcrumbs
         self.file_grid = self.layout_factory.file_grid
         self.sort_combo = self.layout_factory.sort_combo

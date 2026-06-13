@@ -313,5 +313,10 @@
         "action_keep_both": "Keep Both (Different Content)",
         "action_cancel": "Cancel Upload",
         "content_different": "Content appears to be different"
+    },
+    "tag_explorer": {
+        "title": "Tag Explorer",
+        "filter_current": "Filter current folder only",
+        "tooltip": "Explore Tags"
     }
 }

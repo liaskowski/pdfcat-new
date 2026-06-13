@@ -31,6 +31,9 @@ class SearchHandler:
         self._debounce_timer.timeout.connect(self._execute_fetch)
         self._pending_fetch_params = None
         self.current_view_params = ("my", None, None) # (view_mode, folder_id, owner_id)
+        self._all_documents = [] # Store raw documents from server for client-side tag filtering
+        self._active_tags = []
+        self._filter_current_view = True
 
         # Load persistent document cache
         self._load_cache()
@@ -165,6 +168,9 @@ class SearchHandler:
         query_lower = query.lower() if query else ""
         print(f"🔍 DEBUG: Client received {len(documents)} docs from server for mode={view_mode}")
 
+        self._all_documents = documents # Keep raw for tag filtering
+        self._update_tags_from_docs(documents)
+
         # Thread-safe cache update
         with QMutexLocker(self._cache_mutex):
             # Update local cache with documents from server
@@ -217,12 +223,91 @@ class SearchHandler:
                 self._folder_cache[cache_key] = filtered
 
         # Update grid
-        self._update_grid_with_docs(filtered)
+        self._apply_tag_filter_and_update(filtered)
 
         # Start background indexing for newly fetched documents
         if not query and not category_id and not file_type_id:
             self.start_indexing(filtered)
     
+    def _update_tags_from_docs(self, docs):
+        tag_counts = {}
+        for d in docs:
+            if d.tags:
+                tags = [t.strip() for t in d.tags.split(',') if t.strip()]
+                for t in tags:
+                    tag_counts[t] = tag_counts.get(t, 0) + 1
+        self.ui.tag_cloud.update_tags(tag_counts, self._active_tags)
+
+    def toggle_tag(self, tag, checked):
+        if checked:
+            if tag not in self._active_tags: self._active_tags.append(tag)
+        else:
+            if tag in self._active_tags: self._active_tags.remove(tag)
+        
+        # Trigger UI update
+        self._apply_tag_filter_and_update(self._all_documents)
+
+    def set_tag_filter_current_view(self, current_only):
+        self._filter_current_view = current_only
+        if not current_only:
+            # Fetch all docs to get global tags
+            self._fetch_global_tags()
+        else:
+            # Revert to current folder tags
+            self._update_tags_from_docs(self._all_documents)
+            self._apply_tag_filter_and_update(self._all_documents)
+
+    def _fetch_global_tags(self):
+        from ...utils.workers import SearchWorker
+        # To get truly global tags, we fetch community documents which usually covers all public docs
+        # Plus 'my' documents.
+        worker = SearchWorker(self.api, view_mode="community", load_all=True)
+        worker.finished.connect(self._on_global_tags_fetched)
+        worker.start()
+        # Store to prevent GC
+        if not hasattr(self, '_old_workers'): self._old_workers = []
+        self._old_workers.append(worker)
+
+    def _on_global_tags_fetched(self, documents):
+        # Merge with current local docs for a more complete picture
+        all_docs = documents + self._all_documents
+        # Unique by ID
+        seen = set()
+        unique_docs = []
+        for d in all_docs:
+            if d.id not in seen:
+                unique_docs.append(d)
+                seen.add(d.id)
+                
+        tag_counts = {}
+        for d in unique_docs:
+            if d.tags:
+                tags = [t.strip() for t in d.tags.split(',') if t.strip()]
+                for t in tags:
+                    tag_counts[t] = tag_counts.get(t, 0) + 1
+        self.ui.tag_cloud.update_tags(tag_counts, self._active_tags)
+        
+        if not self._filter_current_view:
+            self._apply_tag_filter_and_update(unique_docs)
+
+    def _apply_tag_filter_and_update(self, docs):
+        if not self._active_tags:
+            self._update_grid_with_docs(docs)
+            return
+
+        filtered = []
+        for d in docs:
+            d_tags = [t.strip().lower() for t in (d.tags or "").split(',') if t.strip()]
+            match = True
+            for active in self._active_tags:
+                if active.lower() not in d_tags:
+                    match = False
+                    break
+            if match:
+                filtered.append(d)
+        
+        self._update_grid_with_docs(filtered)
+
     def _update_grid_with_docs(self, documents):
         """Update file grid with documents (non-blocking)."""
         # Skip rebuild if document set hasn't changed (prevents sort/filter reset on auto-refresh)
